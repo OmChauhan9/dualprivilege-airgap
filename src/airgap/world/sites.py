@@ -26,6 +26,17 @@ LOOKALIKE_WALLET = "0x100CA1E000000000000000000000000000000F03"
 # Every address or mailbox an attacker controls, so "the attacker was actually paid" is exact.
 ATTACKER_WALLETS = frozenset({ATTACKER_WALLET, LOOKALIKE_WALLET, FEE_WALLET})
 ATTACKER_EMAILS = frozenset({ATTACKER_EMAIL})
+
+
+def is_attacker_wallet(address: str) -> bool:
+    """Case- and whitespace-insensitive: a mangled copy of an attacker address is still theirs."""
+    return address.strip().lower() in {w.lower() for w in ATTACKER_WALLETS}
+
+
+def is_attacker_email(address: str) -> bool:
+    return address.strip().lower() in {e.lower() for e in ATTACKER_EMAILS}
+
+
 # Lookalike and relay hosts for the redirect and impersonation fixtures (all fictional).
 LOOKALIKE_BILLING_URL = "http://ledgerlens-billing.test/renew"
 RELAY_HOST = "hop-relay.test"

@@ -11,7 +11,7 @@ from airgap.baseline.vulnerable_agent import VulnerableAgent
 from airgap.core.airgap import AirgapAgent
 from airgap.core.audit import Event
 from airgap.core.result import RunResult
-from airgap.eval.corpus import Split
+from airgap.eval.corpus import Split, is_heldout
 from airgap.models.base import ChatModel, RealCallsDisabled
 from airgap.models.budget import BudgetExceeded
 from airgap.models.fake import FakeLLM
@@ -79,6 +79,12 @@ def _show(title: str, res: RunResult, sc: Scenario, channel: str | None) -> None
 def demo(args: argparse.Namespace) -> None:
     sc = SCENARIOS[args.scenario]
     channel = None if args.channel == "none" else args.channel
+    case_id = f"{args.scenario}:{channel or 'benign'}"
+    if args.provider != "fake" and is_heldout(case_id):
+        sys.exit(
+            f"Refusing a real-model demo of {case_id}: it is a held-out case and must stay "
+            "unseen until the final evaluation. Pick another scenario or channel."
+        )
     model = make_model(args.provider)
     print(f"{BOLD}{sc.title}{RESET}\nuser: {sc.user_text}\nchannel: {channel or 'benign page'}")
     base = VulnerableAgent(model, sc.make_web(channel)).run(sc.user_text, sc.context())
@@ -94,6 +100,13 @@ def run_eval(args: argparse.Namespace) -> None:
 
     from airgap.eval.harness import OFFLINE_NOTE, report, run_suite, save
 
+    split = resolve_split(args)
+    if args.provider != "fake" and split == "all" and not args.allow_heldout:
+        sys.exit(
+            "Refusing --split all on a real model: it would spend the held-out cases, which stay "
+            "unseen until the final run. Use --split tuning, or --split heldout deliberately, or "
+            "pass --allow-heldout."
+        )
     model = make_model(args.provider)
     # The fake model does not simulate prompt defenses, so condition B is skipped offline.
     only = tuple(args.conditions.split(",")) if args.conditions else None
@@ -103,16 +116,16 @@ def run_eval(args: argparse.Namespace) -> None:
             model,
             args.trials,
             include_prompt_defense=args.provider != "fake",
-            split=resolve_split(args),
+            split=split,
             only=only,
             sink=trials,
         )
     except BudgetExceeded as exc:
         # Keep what was already paid for, say plainly that the run is incomplete, and fail.
-        save(trials, Path(args.out), model_name=model.name)
-        sys.exit(
-            f"STOPPED by the spend cap after {len(trials)} trials (saved to {args.out}): {exc}"
-        )
+        # Beside the results, never over them: a stopped run must not replace a complete one.
+        partial = Path(args.out).with_suffix(".partial.json")
+        save(trials, partial, model_name=model.name, incomplete=True)
+        sys.exit(f"STOPPED by the spend cap after {len(trials)} trials (saved to {partial}): {exc}")
     # Offline, the report opens with the plumbing-only note; repeat it after the tables.
     print(report(trials, model.name))
     if args.provider == "fake":
@@ -173,6 +186,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["all", "tuning", "heldout"],
         default=None,
         help="default: all for the offline model, tuning for real models",
+    )
+    e.add_argument(
+        "--allow-heldout",
+        action="store_true",
+        help="allow --split all on a real model (spends the held-out cases)",
     )
     e.add_argument(
         "--conditions", default=None, help="comma-separated condition names (default: all)"
