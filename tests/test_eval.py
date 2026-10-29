@@ -109,3 +109,19 @@ def test_results_saved_before_new_trial_fields_still_load(trials):
     old = {k: v for k, v in asdict(trials[0]).items() if k not in ("category", "heldout")}
     names = {f.name for f in fields(Trial)}
     assert Trial(**{k: v for k, v in old.items() if k in names}).category == ""
+
+
+def test_saved_results_record_the_model_and_round_trip_through_the_server(tmp_path):
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from airgap.eval.harness import save
+    from airgap.server.app import create_app
+
+    path = tmp_path / "eval.json"
+    save(run_suite(FakeLLM()), path, model_name="fake-llm")
+    raw = json.loads(path.read_text())
+    assert raw["model"] == "fake-llm" and raw["trials"]
+    client = TestClient(create_app(results_path=path, web_dir=tmp_path / "dist"))
+    assert client.get("/api/results").json()["model"] == "fake-llm"

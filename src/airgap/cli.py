@@ -96,7 +96,7 @@ def run_eval(args: argparse.Namespace) -> None:
     print(report(trials, model.name))
     if args.provider == "fake":
         print(f"\n{OFFLINE_NOTE}")
-    save(trials, Path(args.out))
+    save(trials, Path(args.out), model_name=model.name)
     print(f"\nraw trials saved to {args.out}")
 
 

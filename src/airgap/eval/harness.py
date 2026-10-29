@@ -261,6 +261,9 @@ def report(trials: list[Trial], model_name: str) -> str:
     return "\n".join(lines)
 
 
-def save(trials: list[Trial], path: Path) -> None:
+def save(trials: list[Trial], path: Path, model_name: str | None = None) -> None:
+    """Write trials. Given a model name, save {"model", "trials"} so results say who made them."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps([asdict(t) for t in trials], indent=1))
+    rows = [asdict(t) for t in trials]
+    payload = rows if model_name is None else {"model": model_name, "trials": rows}
+    path.write_text(json.dumps(payload, indent=1))
