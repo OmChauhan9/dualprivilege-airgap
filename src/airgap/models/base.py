@@ -21,6 +21,7 @@ class Completion:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     latency_s: float = 0.0
+    usage_known: bool = True  # False when the provider reported no token counts
 
 
 class ChatModel(Protocol):

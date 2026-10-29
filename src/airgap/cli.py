@@ -123,15 +123,17 @@ def serve(args: argparse.Namespace) -> None:
 
 
 def show_spend(args: argparse.Namespace) -> None:
-    import json
+    from airgap.models.budget import BudgetExceeded, cap_from_env, default_ledger, read_ledger
 
-    from airgap.models.budget import cap_from_env, default_ledger
-
-    spent = 0.0
     ledger = default_ledger()
-    if ledger.exists():
-        spent = float(json.loads(ledger.read_text())["spent_usd"])
-    print(f"recorded real-model spend: ${spent:.4f} of ${cap_from_env():.2f} cap  ({ledger})")
+    try:
+        state, cap = read_ledger(ledger), cap_from_env()
+    except BudgetExceeded as exc:
+        sys.exit(f"{exc} ({ledger})")
+    print(
+        f"recorded real-model spend: ${state.spent_usd:.4f} + ${state.reserved_usd:.4f} in flight "
+        f"of ${cap:.2f} cap  ({ledger})"
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
