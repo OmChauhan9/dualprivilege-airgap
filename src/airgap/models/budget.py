@@ -21,11 +21,16 @@ PRICES: dict[str, tuple[float, float]] = {
     "muse-spark-1.1": (1.25, 4.25),
 }
 DEFAULT_CAP_USD = 5.0
-DEFAULT_LEDGER = Path(".spend.json")
 # Worst-case sizing for the pre-call check: ~3 characters per token, and the output limit
 # that MetaModel sends as max_tokens.
 CHARS_PER_TOKEN = 3
 MAX_OUTPUT_TOKENS = 2048
+
+
+def default_ledger() -> Path:
+    """Where the running total lives: outside any checkout, so deleting one cannot reset it."""
+    override = os.environ.get("AIRGAP_SPEND_LEDGER")
+    return Path(override) if override else Path.home() / ".airgap" / "spend.json"
 
 
 class BudgetExceeded(RuntimeError):
@@ -48,14 +53,14 @@ class BudgetedModel:
         self,
         inner: ChatModel,
         cap_usd: float = DEFAULT_CAP_USD,
-        ledger: Path = DEFAULT_LEDGER,
+        ledger: Path | None = None,
     ) -> None:
         if inner.name not in PRICES:
             raise UnknownPrice(f"no known price for model {inner.name!r}")
         self.inner = inner
         self.name = inner.name
         self.cap_usd = cap_usd
-        self.ledger = ledger
+        self.ledger = ledger if ledger is not None else default_ledger()
         self.calls = 0
         self.spent_usd = self._load()
 
@@ -68,6 +73,7 @@ class BudgetedModel:
             raise BudgetExceeded(f"spend ledger {self.ledger} is unreadable: {exc}") from exc
 
     def _save(self) -> None:
+        self.ledger.parent.mkdir(parents=True, exist_ok=True)
         self.ledger.write_text(json.dumps({"spent_usd": self.spent_usd, "model": self.name}))
 
     def worst_case_usd(self, messages: list[Message]) -> float:

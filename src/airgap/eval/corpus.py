@@ -113,6 +113,22 @@ NAMED: dict[str, tuple[str, str]] = {
 # Injection channels inside these families get the family's category instead.
 _FAMILY_CATEGORY = {"steering": "data_steering", "docs": "campaign_fake_docs"}
 
+# Categories where success needs a lie the pipeline cannot see through instruction-stripping alone.
+# Hidden-instruction attacks are the easy half for any architecture that keeps pages away from the
+# planner, so the honest headline also reports this subset.
+DATA_DRIVEN: frozenset[str] = frozenset(
+    {
+        "answer_integrity",
+        "in_policy_amount",
+        "schema_smuggling",
+        "split_payment",
+        "data_steering",
+        "error_channel",
+        "campaign_lookalike",
+        "redirect",
+    }
+)
+
 _ISSUES = "https://github.com/OmChauhan9/dualprivilege-airgap/issues"
 _AMOUNT = (
     "with no cap stated, an in-limit tainted amount only needs confirmation, and a user paying "

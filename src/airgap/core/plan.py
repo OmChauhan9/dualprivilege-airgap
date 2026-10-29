@@ -128,7 +128,7 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
             check_arg(step.amount, where)
             if isinstance(step.payee, Lit):
                 addr = str(step.payee.lit)
-                if addr not in ctx.payee_allowlist.values() and addr not in ctx.user_text:
+                if addr not in ctx.payee_allowlist.values() and addr not in ctx.user_addresses:
                     problems.append(f"{where}: payee {addr} is not allowlisted or user-supplied")
         elif isinstance(step, SendEmail):
             check_arg(step.to, where)

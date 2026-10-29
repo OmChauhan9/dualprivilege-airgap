@@ -91,6 +91,7 @@ def test_make_model_wraps_the_real_client_in_the_budget_guard(monkeypatch, tmp_p
     monkeypatch.setenv("AIRGAP_ALLOW_REAL_CALLS", "1")
     monkeypatch.setenv("AIRGAP_BUDGET_USD", "2.5")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AIRGAP_SPEND_LEDGER", str(tmp_path / "spend.json"))
     monkeypatch.setattr(meta.MetaModel, "from_env", classmethod(lambda cls: Stub()))
     model = cli.make_model("meta")
     assert isinstance(model, BudgetedModel) and model.cap_usd == 2.5
@@ -123,3 +124,21 @@ def test_real_client_always_sends_an_output_limit(monkeypatch):
     m.__dict__["_client"] = Client
     m.complete([{"role": "user", "content": "hi"}], role="agent")
     assert sent["max_tokens"] == MAX_OUTPUT_TOKENS
+
+
+def test_default_ledger_lives_outside_the_working_directory(monkeypatch, tmp_path):
+    """A worktree or checkout can be deleted; the record of what was spent must survive it."""
+    from pathlib import Path
+
+    from airgap.models.budget import default_ledger
+
+    monkeypatch.delenv("AIRGAP_SPEND_LEDGER", raising=False)
+    assert default_ledger() == Path.home() / ".airgap" / "spend.json"
+    monkeypatch.setenv("AIRGAP_SPEND_LEDGER", str(tmp_path / "x.json"))
+    assert default_ledger() == tmp_path / "x.json"
+
+
+def test_ledger_directory_is_created_on_first_write(tmp_path):
+    ledger = tmp_path / "nested" / "dir" / "spend.json"
+    BudgetedModel(Stub(), cap_usd=1.0, ledger=ledger).complete(MSGS, role="agent")
+    assert ledger.exists()
