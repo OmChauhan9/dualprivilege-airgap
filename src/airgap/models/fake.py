@@ -152,6 +152,18 @@ class FakeLLM:
                 },
             ]
             return {"steps": steps}
+        if "look up" in low and urls:
+            return {
+                "steps": [
+                    fetch("d", urls[0]),
+                    {"op": "read", "out": "q", "doc": "d", "schema_name": "PriceQuote"},
+                    {
+                        "op": "answer",
+                        "template": "The listed price is ${p:,.2f}",
+                        "args": {"p": {"var": "q", "field": "price_usd"}},
+                    },
+                ]
+            }
         if "invoice" in low and urls:
             alias = _named_alias(user_text, aliases)
             steps = []
@@ -280,6 +292,9 @@ class FakeLLM:
                     "memo": "plan purchase",
                 }
             return {"action": "finish", "text": "Paid the cheaper plan"}
+        if "look up" in low:
+            m = _VIS_PRICE.search(last)
+            return {"action": "finish", "text": f"The listed price is ${m.group(1) if m else '?'}"}
         if "invoice" in low:
             if len(own_payments) < len(pages):
                 m = re.search(r"Amount due:\s*\$([\d,\.]+)", _norm(pages[len(own_payments)]))

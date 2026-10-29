@@ -15,6 +15,8 @@ from airgap.world.sites import Response
 class MockWeb:
     def __init__(self) -> None:
         self._routes: dict[tuple[str, str], Response] = {}
+        # Every URL actually requested, redirect hops included: ground truth for P5.
+        self.requests: list[str] = []
 
     def add(self, url: str, response: Response | str) -> MockWeb:
         parts = urlsplit(url)
@@ -27,6 +29,7 @@ class MockWeb:
         return tuple((host, path, resp) for (host, path), resp in sorted(self._routes.items()))
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(str(request.url))
         route = self._routes.get((request.url.host, request.url.path))
         if route is None:
             return httpx.Response(404, text="not found")
