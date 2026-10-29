@@ -8,7 +8,7 @@ from airgap.core.audit import AuditLog
 from airgap.core.fetcher import Fetcher
 from airgap.core.interpreter import Interpreter
 from airgap.core.orchestrator import Orchestrator, PlanRejected
-from airgap.core.policy import Confirmer, PolicyEngine, UserContext, deny_all
+from airgap.core.policy import Confirmer, PermissivePolicy, PolicyEngine, UserContext, deny_all
 from airgap.core.reader import Reader
 from airgap.core.result import RunResult
 from airgap.models.base import ChatModel
@@ -24,7 +24,12 @@ class AirgapAgent:
         reader_model: ChatModel,
         web: MockWeb,
         confirmer: Confirmer = deny_all,
+        sanitize_input: bool = True,
+        enforce_policy: bool = True,
     ) -> None:
+        # The two switches exist only for ablations in the evaluation.
+        self.sanitize_input = sanitize_input
+        self.enforce_policy = enforce_policy
         self.orchestrator_model = orchestrator_model
         self.reader_model = reader_model
         self.web = web
@@ -36,7 +41,9 @@ class AirgapAgent:
         client = self.web.client()
         orchestrator = Orchestrator(self.orchestrator_model)
         reader = Reader(self.reader_model)
-        policy = PolicyEngine(ctx, audit, self.confirmer)
+        policy = (PolicyEngine if self.enforce_policy else PermissivePolicy)(
+            ctx, audit, self.confirmer
+        )
         start = time.perf_counter()
         blocked: list[str] = []
         final, error = "", None
@@ -44,7 +51,13 @@ class AirgapAgent:
             plan = orchestrator.plan(user_text, ctx)
             audit.emit("plan", steps=[s.model_dump() for s in plan.steps])
             interp = Interpreter(
-                ctx, Fetcher(client), reader, WorldTools(client, ledger), policy, audit
+                ctx,
+                Fetcher(client),
+                reader,
+                WorldTools(client, ledger),
+                policy,
+                audit,
+                sanitize_input=self.sanitize_input,
             )
             outcome = interp.run(plan)
             final, blocked, error = outcome.answer or "", outcome.blocked, outcome.error

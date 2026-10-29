@@ -59,6 +59,36 @@ class UserContext:
         return frozenset(named) | self.extra_domains
 
 
+class PermissivePolicy:
+    """Ablation only: logs decisions but allows everything. Never used outside evaluation."""
+
+    def __init__(self, ctx: UserContext, audit: AuditLog, confirmer: Confirmer = deny_all) -> None:
+        self.inner = PolicyEngine(ctx, audit, confirmer)
+        self.ctx = ctx
+
+    @property
+    def confirmations(self) -> int:
+        return self.inner.confirmations
+
+    def note_untrusted_input(self) -> None:
+        self.inner.note_untrusted_input()
+
+    def check_fetch(self, url: Tainted) -> Decision:
+        return ALLOW
+
+    def check_fetch_result(self, prov: Provenance) -> Decision:
+        return ALLOW
+
+    def check_pay(self, payee: Tainted, amount: Tainted, memo: Tainted) -> Decision:
+        return ALLOW
+
+    def check_email(self, to: Tainted, subject: Tainted, body: Tainted) -> Decision:
+        return ALLOW
+
+    def authorize(self, kind: str, args: dict[str, Any], decision: Decision) -> bool:
+        return self.inner.authorize(kind, args, decision)
+
+
 class PolicyEngine:
     def __init__(self, ctx: UserContext, audit: AuditLog, confirmer: Confirmer = deny_all) -> None:
         self.ctx = ctx

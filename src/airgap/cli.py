@@ -84,6 +84,27 @@ def demo(args: argparse.Namespace) -> None:
     _show("AIRGAPPED AGENT", air, sc, channel)
 
 
+def run_eval(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from airgap.eval.harness import report, run_suite, save
+
+    model = make_model(args.provider)
+    # The fake model does not simulate prompt defenses, so condition B is skipped offline.
+    trials = run_suite(model, args.trials, include_prompt_defense=args.provider != "fake")
+    print(report(trials, model.name))
+    if args.provider == "fake":
+        print(
+            "\nNOTE: offline FakeLLM is a simulation of a gullible model. These numbers test the "
+            "plumbing and policy logic only; they are not evidence about real models.\n"
+            "The ablation rows (C_no_sanitizer, C_no_policy) are NOT informative offline: the fake "
+            "reader is a regex extractor that cannot be injected, so isolation alone holds. "
+            "Component contributions can only be measured with a real reader model."
+        )
+    save(trials, Path(args.out))
+    print(f"\nraw trials saved to {args.out}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="airgap")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -92,6 +113,12 @@ def main(argv: list[str] | None = None) -> None:
     d.add_argument("--channel", default="css_display_none")
     d.add_argument("--provider", choices=["fake", "meta"], default="fake")
     d.set_defaults(func=demo)
+    e = sub.add_parser("eval", help="run the evaluation suite")
+    e.add_argument("--suite", choices=["core"], default="core")
+    e.add_argument("--trials", type=int, default=1)
+    e.add_argument("--provider", choices=["fake", "meta"], default="fake")
+    e.add_argument("--out", default="results/eval.json")
+    e.set_defaults(func=run_eval)
     args = parser.parse_args(argv)
     args.func(args)
 

@@ -21,9 +21,9 @@ from airgap.core.plan import (
     Read,
     SendEmail,
 )
-from airgap.core.policy import PolicyEngine, UserContext
+from airgap.core.policy import PermissivePolicy, PolicyEngine, UserContext
 from airgap.core.reader import Reader, ReaderError
-from airgap.core.sanitizer import sanitize
+from airgap.core.sanitizer import SanitizeResult, sanitize
 from airgap.core.values import Tainted, merge_sources, trusted
 from airgap.world.tools import WorldTools
 
@@ -49,9 +49,11 @@ class Interpreter:
         fetcher: Fetcher,
         reader: Reader,
         tools: WorldTools,
-        policy: PolicyEngine,
+        policy: PolicyEngine | PermissivePolicy,
         audit: AuditLog,
+        sanitize_input: bool = True,
     ) -> None:
+        self.sanitize_input = sanitize_input
         self.ctx = ctx
         self.fetcher = fetcher
         self.reader = reader
@@ -140,7 +142,10 @@ class Interpreter:
         doc = self.env[step.doc]
         if not isinstance(doc, FetchedDoc):
             raise KeyError(f"{step.doc} is not a document")
-        cleaned = sanitize(doc.raw)
+        if self.sanitize_input:
+            cleaned = sanitize(doc.raw)
+        else:  # ablation: the reader sees the raw markup, hidden channels included
+            cleaned = SanitizeResult(text=doc.raw, removed=())
         self.audit.emit(
             "sanitize",
             handle=doc.handle.id,
