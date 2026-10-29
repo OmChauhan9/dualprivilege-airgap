@@ -41,7 +41,8 @@ class MetaModel:
 
         self.name = model
         self.temperature = temperature
-        self._client = OpenAI(api_key=api_key, base_url=base_url)
+        # No SDK retries: each retry is another billed request, but only one usage would be seen.
+        self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
 
     @classmethod
     def from_env(cls) -> MetaModel:
@@ -79,11 +80,16 @@ class MetaModel:
                 parsed = json.loads(text)
             except json.JSONDecodeError:
                 parsed = None
-        usage = resp.usage
+        # Missing or partial usage is flagged, so the budget guard charges the worst case.
+        usage = getattr(resp, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", None)
+        completion_tokens = getattr(usage, "completion_tokens", None)
+        known = isinstance(prompt_tokens, int) and isinstance(completion_tokens, int)
         return Completion(
             text=text,
             parsed=parsed,
-            prompt_tokens=usage.prompt_tokens if usage else 0,
-            completion_tokens=usage.completion_tokens if usage else 0,
+            prompt_tokens=prompt_tokens if isinstance(prompt_tokens, int) else 0,
+            completion_tokens=completion_tokens if isinstance(completion_tokens, int) else 0,
             latency_s=latency,
+            usage_known=known,
         )
