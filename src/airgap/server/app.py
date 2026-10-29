@@ -12,13 +12,14 @@ from collections.abc import AsyncIterator
 from dataclasses import fields
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from airgap.eval.harness import Trial, failures, summarize
 from airgap.eval.metrics import Rate
-from airgap.models.base import ChatModel
+from airgap.models.base import ChatModel, RealCallsDisabled
 from airgap.server.runner import Message, run_both
 from airgap.world.scenarios import SCENARIOS
 
@@ -38,8 +39,26 @@ def _make_model(provider: str) -> ChatModel:
 
     try:
         return cli.make_model(provider)
-    except SystemExit as exc:
-        raise HTTPException(status_code=403, detail=str(exc.code)) from None
+    except RealCallsDisabled as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+
+
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _require_local_same_origin(request: Request) -> None:
+    """Real runs spend credits, so refuse anything that did not come from our own page.
+
+    Blocks other websites (Sec-Fetch-Site / Origin) and DNS rebinding (Host header).
+    """
+    host_header = request.headers.get("host", "")
+    if urlsplit(f"//{host_header}").hostname not in _LOOPBACK_HOSTS:
+        raise HTTPException(403, "real model runs are only allowed from the local console")
+    if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        raise HTTPException(403, "real model runs must come from the console page itself")
+    origin = request.headers.get("origin")
+    if origin is not None and urlsplit(origin).netloc != host_header:
+        raise HTTPException(403, "real model runs must come from the console page itself")
 
 
 def _rate(r: Rate) -> dict[str, float | int]:
@@ -99,6 +118,7 @@ def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB
 
     @app.get("/api/run/stream")
     async def run_stream(
+        request: Request,
         scenario: str,
         channel: str = "none",
         provider: Literal["fake", "meta"] = "fake",
@@ -108,7 +128,9 @@ def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB
             raise HTTPException(404, f"unknown scenario {scenario}")
         if channel != "none" and channel not in sc.channels:
             raise HTTPException(400, f"channel {channel} is not defined for scenario {scenario}")
-        model = _make_model(provider)
+        model = _make_model(provider)  # refuses first unless real calls are enabled
+        if provider != "fake":
+            _require_local_same_origin(request)
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[Message | None] = asyncio.Queue()
 

@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+
+class RealCallsDisabled(RuntimeError):
+    """Raised when a real model is requested without AIRGAP_ALLOW_REAL_CALLS=1."""
+
+
 Role = Literal["agent", "orchestrator", "reader"]
 Message = dict[str, str]
 

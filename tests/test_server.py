@@ -270,3 +270,63 @@ def test_committed_replays_are_current():
             a["data"].pop("latency_s", None)
             b["data"].pop("latency_s", None)
             assert a == json.loads(json.dumps(b)), key
+
+
+# ---- real-call guard against other web pages (issue #6) ------------------------------------
+
+_META_PARAMS = {"scenario": "payment", "channel": "none", "provider": "meta"}
+
+
+@pytest.fixture
+def real_calls_enabled(monkeypatch):
+    """Guard open, but the 'real' model is the offline fake: no network client is ever built."""
+    import airgap.models.meta as meta
+    from airgap.models.fake import FakeLLM
+
+    monkeypatch.setenv("AIRGAP_ALLOW_REAL_CALLS", "1")
+    monkeypatch.setattr(meta.MetaModel, "from_env", classmethod(lambda cls: FakeLLM()))
+
+
+def test_real_run_rejects_cross_site_requests(client, real_calls_enabled):
+    resp = client.get(
+        "/api/run/stream",
+        params=_META_PARAMS,
+        headers={"host": "127.0.0.1:8000", "sec-fetch-site": "cross-site"},
+    )
+    assert resp.status_code == 403
+
+
+def test_real_run_rejects_non_loopback_host_header(client, real_calls_enabled):
+    resp = client.get("/api/run/stream", params=_META_PARAMS, headers={"host": "evil.example:8000"})
+    assert resp.status_code == 403
+
+
+def test_real_run_rejects_foreign_origin(client, real_calls_enabled):
+    resp = client.get(
+        "/api/run/stream",
+        params=_META_PARAMS,
+        headers={"host": "localhost:8000", "origin": "https://evil.example"},
+    )
+    assert resp.status_code == 403
+
+
+def test_real_run_allows_same_origin_loopback(client, real_calls_enabled):
+    resp = client.get(
+        "/api/run/stream",
+        params=_META_PARAMS,
+        headers={
+            "host": "127.0.0.1:8000",
+            "origin": "http://127.0.0.1:8000",
+            "sec-fetch-site": "same-origin",
+        },
+    )
+    assert resp.status_code == 200
+
+
+def test_offline_provider_is_not_gated_by_origin_checks(client):
+    resp = client.get(
+        "/api/run/stream",
+        params={"scenario": "payment", "channel": "none"},
+        headers={"sec-fetch-site": "cross-site"},
+    )
+    assert resp.status_code == 200

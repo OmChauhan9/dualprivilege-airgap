@@ -10,7 +10,7 @@ from airgap.baseline.vulnerable_agent import VulnerableAgent
 from airgap.core.airgap import AirgapAgent
 from airgap.core.audit import Event
 from airgap.core.result import RunResult
-from airgap.models.base import ChatModel
+from airgap.models.base import ChatModel, RealCallsDisabled
 from airgap.models.fake import FakeLLM
 from airgap.world.scenarios import SCENARIOS, Scenario
 
@@ -22,7 +22,7 @@ def make_model(provider: str) -> ChatModel:
         return FakeLLM()
     if provider == "meta":
         if os.environ.get("AIRGAP_ALLOW_REAL_CALLS") != "1":
-            sys.exit(
+            raise RealCallsDisabled(
                 "Refusing real model calls: set AIRGAP_ALLOW_REAL_CALLS=1 only after confirming "
                 "your Meta credit is visible, auto top-off is off and a spend limit is set."
             )
@@ -139,7 +139,10 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--web-dir", default=None, help="built UI (default: web/dist in the repo)")
     s.set_defaults(func=serve)
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except RealCallsDisabled as exc:
+        sys.exit(str(exc))
 
 
 if __name__ == "__main__":
