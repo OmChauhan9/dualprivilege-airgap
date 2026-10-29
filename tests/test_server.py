@@ -382,3 +382,16 @@ def test_static_route_checks_containment_before_touching_the_filesystem(tmp_path
     client.get("/..%2f..%2fetc%2fpasswd")
     outside = [p for p in probed if "etc" in p.parts and "passwd" in p.parts]
     assert outside == []
+
+
+def test_static_route_serves_real_assets_and_refuses_symlinks_out_of_the_folder(tmp_path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html>console</html>")
+    (dist / "assets" / "app.js").write_text("console.log('ui')")
+    outside = tmp_path / "secret.txt"
+    outside.write_text("TOP-SECRET")
+    (dist / "leak.txt").symlink_to(outside)
+    client = TestClient(create_app(results_path=tmp_path / "e.json", web_dir=dist))
+    assert client.get("/assets/app.js").text == "console.log('ui')"
+    assert "TOP-SECRET" not in client.get("/leak.txt").text
