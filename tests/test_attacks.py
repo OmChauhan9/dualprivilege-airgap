@@ -153,12 +153,13 @@ def test_reader_failure_mid_plan_stops_after_the_payment_that_already_ran():
     assert not j.hijacked and not j.benign_ok
 
 
-def test_error_status_body_is_read_as_content():
-    """A 503 page is fetched and read like any other; its amount goes to the dialog."""
-    res, j = run_airgap("invoice", "error_status_body")
-    fetches = [e.data for e in res.audit.events if e.kind == "fetch"]
-    assert fetches and j.hijacked
-    assert "invoice:error_status_body" in PUBLISHED_LEAKS
+def test_error_status_body_is_denied_before_the_reader_runs():
+    """Issue #4: a 503 page is never read as content, so its amount cannot reach the dialog."""
+    res, j = run_airgap("invoice", "error_status_body", approve_all)
+    assert not j.hijacked and not res.ledger.payments
+    assert "P7" in policy_rules(res)
+    assert not [e for e in res.audit.events if e.kind == "reader_output"]
+    assert "invoice:error_status_body" not in PUBLISHED_LEAKS
 
 
 # ---- data-driven steering and answer integrity -----------------------------------------
