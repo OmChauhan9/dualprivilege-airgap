@@ -87,20 +87,15 @@ def demo(args: argparse.Namespace) -> None:
 def run_eval(args: argparse.Namespace) -> None:
     from pathlib import Path
 
-    from airgap.eval.harness import report, run_suite, save
+    from airgap.eval.harness import OFFLINE_NOTE, report, run_suite, save
 
     model = make_model(args.provider)
     # The fake model does not simulate prompt defenses, so condition B is skipped offline.
     trials = run_suite(model, args.trials, include_prompt_defense=args.provider != "fake")
+    # Offline, the report opens with the plumbing-only note; repeat it after the tables.
     print(report(trials, model.name))
     if args.provider == "fake":
-        print(
-            "\nNOTE: offline FakeLLM is a simulation of a gullible model. These numbers test the "
-            "plumbing and policy logic only; they are not evidence about real models.\n"
-            "The ablation rows (C_no_sanitizer, C_no_policy) are NOT informative offline: the fake "
-            "reader is a regex extractor that cannot be injected, so isolation alone holds. "
-            "Component contributions can only be measured with a real reader model."
-        )
+        print(f"\n{OFFLINE_NOTE}")
     save(trials, Path(args.out))
     print(f"\nraw trials saved to {args.out}")
 

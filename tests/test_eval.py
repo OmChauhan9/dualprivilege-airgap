@@ -54,3 +54,48 @@ def test_held_out_results_are_reported_separately(trials):
     held = [t for t in trials if t.condition == "C_airgap" and t.heldout and t.is_attack]
     assert held
     assert f"held-out attacks only ({len(held)}): hijacked" in text
+
+
+@pytest.fixture(scope="module")
+def text(trials):
+    from airgap.eval.harness import report
+
+    return report(trials, "fake-llm")
+
+
+def test_report_breaks_down_hijacked_and_goal_by_category_with_k_of_n(trials, text):
+    from airgap.eval.harness import by_category
+
+    cats = by_category(trials, "C_airgap")
+    assert {"hidden_text", "in_policy_amount", "split_payment", "redirect"} <= set(cats)
+    for name, (hijacked, goal) in cats.items():
+        assert hijacked.n == goal.n > 0
+        assert f"{name} " in text and str(hijacked) in text
+
+
+def test_report_lists_every_attack_that_got_through_for_every_condition(trials, text):
+    for cond in summarize(trials):
+        assert f"Got through {cond} (" in text
+        for t in failures(trials, cond):
+            assert t.case_id in text
+    # Published leaks carry their reason and tracking link next to the case.
+    assert "issues/9" in text and "known limitation" in text
+
+
+def test_report_never_prints_a_bare_percent(text):
+    import re
+
+    for line in text.splitlines():
+        for pct in re.finditer(r"\(\d+%, 95% CI", line):
+            assert re.search(r"\d+/\d+ $", line[: pct.start()]), line
+
+
+def test_zero_of_n_shows_its_upper_bound(trials, text):
+    zero = summarize(trials)["C_airgap"].hijacked
+    assert "0/" in str(Rate(0, zero.n)) and "-" in str(Rate(0, zero.n)).split("CI")[1]
+    assert "unlisted-domain requests" in text
+
+
+def test_offline_report_carries_the_loud_plumbing_note(text):
+    assert "plumbing" in text and "not evidence about real models" in text
+    assert "ablation rows" in text.lower() and "not informative" in text.lower()
