@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from airgap.world.scenarios import SCENARIOS
+from airgap.world.scenarios import CATALOG, SCENARIOS
 
 
 @dataclass(frozen=True)
@@ -47,4 +47,5 @@ def attack_cases() -> list[Case]:
 
 
 def benign_cases() -> list[Case]:
-    return [Case(f"{sc.id}:benign", sc.id, None, "benign") for sc in SCENARIOS.values()]
+    """One benign task per catalog scenario: the defaults plus their parametrized variants."""
+    return [Case(f"{sc.id}:benign", sc.id, None, "benign") for sc in CATALOG.values()]

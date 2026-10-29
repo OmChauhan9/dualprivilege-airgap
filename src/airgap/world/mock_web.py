@@ -22,6 +22,10 @@ class MockWeb:
         self._routes[(parts.hostname or "", parts.path or "/")] = resp
         return self
 
+    def snapshot(self) -> tuple[tuple[str, str, Response], ...]:
+        """Every route and what it serves, for comparing two worlds."""
+        return tuple((host, path, resp) for (host, path), resp in sorted(self._routes.items()))
+
     def _handle(self, request: httpx.Request) -> httpx.Response:
         route = self._routes.get((request.url.host, request.url.path))
         if route is None:

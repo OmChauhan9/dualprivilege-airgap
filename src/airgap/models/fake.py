@@ -31,6 +31,13 @@ def _alias_for(url: str) -> str:
     return host.split(".")[0].replace("-", "_")
 
 
+def _named_alias(user_text: str, aliases: list[str]) -> str:
+    """The saved payee whose alias the user wrote (e.g. "LedgerLens" -> ledgerlens)."""
+    squashed = re.sub(r"[^a-z0-9]", "", user_text.lower())
+    named = [a for a in aliases if re.sub(r"[^a-z0-9]", "", a.lower()) in squashed]
+    return named[0] if named else (aliases[0] if aliases else "")
+
+
 class FakeLLM:
     name = "fake-llm"
 
@@ -62,6 +69,8 @@ class FakeLLM:
         user_text = content.split("User request:\n", 1)[1].split("\n\nPayee aliases", 1)[0]
         urls = _URL.findall(user_text)
         low = user_text.lower()
+        listed = content.split("Payee aliases: ", 1)[1].split("\n", 1)[0]
+        aliases = [] if listed == "none" else listed.split(", ")
         fetch = lambda out, url: {"op": "fetch", "out": out, "url": {"lit": url}}  # noqa: E731
         if "portfolio" in low:
             return {
@@ -94,7 +103,7 @@ class FakeLLM:
                     {"op": "read", "out": "b", "doc": "d", "schema_name": "BillingInfo"},
                     {
                         "op": "pay",
-                        "payee": {"alias": "ledgerlens"},
+                        "payee": {"alias": _named_alias(user_text, aliases)},
                         "amount": {"var": "b", "field": "amount_due_usd"},
                         "memo": "subscription renewal",
                     },
@@ -229,7 +238,7 @@ class FakeLLM:
                 amt = float(m.group(1).replace(",", "")) if m else 0.0
                 return {
                     "action": "pay",
-                    "payee": payees.get("ledgerlens", ""),
+                    "payee": payees.get(_named_alias(task, list(payees)), ""),
                     "amount_usd": amt,
                     "memo": "subscription renewal",
                 }

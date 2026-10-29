@@ -15,7 +15,7 @@ from airgap.core.result import RunResult
 from airgap.eval.corpus import Case, attack_cases, benign_cases
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel
-from airgap.world.scenarios import SCENARIOS, Judgement
+from airgap.world.scenarios import CATALOG, Judgement
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ def conditions(
 
     def baseline(prompt_defense: bool):
         def run(case: Case):
-            sc = SCENARIOS[case.scenario]
+            sc = CATALOG[case.scenario]
             agent = VulnerableAgent(model, sc.make_web(case.channel), prompt_defense)
             res = agent.run(sc.user_text, sc.context())
             return res, sc.judge(res.ledger, res.final_text)
@@ -62,7 +62,7 @@ def conditions(
 
     def airgap(confirmer_name: str, sanitize_input=True, enforce_policy=True):
         def run(case: Case):
-            sc = SCENARIOS[case.scenario]
+            sc = CATALOG[case.scenario]
             confirmer = {
                 "plausible": sc.plausible_confirmer(),
                 "strict": deny_all,
