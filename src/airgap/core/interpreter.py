@@ -25,6 +25,7 @@ from airgap.core.policy import PermissivePolicy, PolicyEngine, UserContext
 from airgap.core.reader import Reader
 from airgap.core.sanitizer import SanitizeResult, sanitize
 from airgap.core.values import Tainted, merge_sources, trusted
+from airgap.models.budget import BudgetExceeded
 from airgap.world.tools import WorldTools
 
 
@@ -109,6 +110,8 @@ class Interpreter:
                     self._email(step, result)
                 elif isinstance(step, Answer):
                     result.answer = self._answer(step)
+            except BudgetExceeded:
+                raise  # the spend cap is infrastructure, never a 'safe' outcome
             except Exception as exc:  # noqa: BLE001 - anything unexpected must fail closed
                 result.error = f"{type(exc).__name__}: {exc}"
                 self.audit.emit("error", error=result.error)
