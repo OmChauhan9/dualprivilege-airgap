@@ -12,3 +12,4 @@ HANDOFF.md
 results/
 .cassettes/
 .DS_Store
+.spend.json

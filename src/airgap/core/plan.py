@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import string
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -82,6 +83,13 @@ class Plan(_S):
     steps: list[Step] = Field(max_length=20)
 
 
+def _placeholders(template: str) -> list[str]:
+    try:
+        return [f for _, f, _, _ in string.Formatter().parse(template) if f]
+    except ValueError:
+        return []
+
+
 def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
     """Static pre-execution check (CaMeLoT-lite). Returns violations; empty means OK."""
     problems: list[str] = []
@@ -131,4 +139,14 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
         elif isinstance(step, Answer):
             for name, arg in step.args.items():
                 check_arg(arg, f"{where} arg {name}")
+                if isinstance(arg, Var) and kinds.get(arg.var) == "doc":
+                    problems.append(
+                        f"{where} arg {name}: {arg.var} is a fetched document; "
+                        "read it into a typed value first"
+                    )
+            for placeholder in _placeholders(step.template):
+                if placeholder not in step.args:
+                    problems.append(
+                        f"{where}: template placeholder {{{placeholder}}} has no entry in args"
+                    )
     return problems

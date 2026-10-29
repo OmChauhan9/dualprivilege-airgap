@@ -125,3 +125,20 @@ def test_saved_results_record_the_model_and_round_trip_through_the_server(tmp_pa
     assert raw["model"] == "fake-llm" and raw["trials"]
     client = TestClient(create_app(results_path=path, web_dir=tmp_path / "dist"))
     assert client.get("/api/results").json()["model"] == "fake-llm"
+
+
+def test_run_suite_can_be_limited_to_chosen_conditions():
+    trials = run_suite(FakeLLM(), only=("A_no_defense",))
+    assert {t.condition for t in trials} == {"A_no_defense"}
+
+
+def test_run_suite_rejects_an_unknown_condition_name():
+    with pytest.raises(ValueError, match="unknown condition"):
+        run_suite(FakeLLM(), only=("A_typo",))
+
+
+def test_report_still_renders_when_only_one_condition_ran():
+    from airgap.eval.harness import report
+
+    text = report(run_suite(FakeLLM(), only=("A_no_defense",)), "fake-llm")
+    assert "A_no_defense" in text

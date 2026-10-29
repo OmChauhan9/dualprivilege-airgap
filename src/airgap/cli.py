@@ -26,9 +26,11 @@ def make_model(provider: str) -> ChatModel:
                 "Refusing real model calls: set AIRGAP_ALLOW_REAL_CALLS=1 only after confirming "
                 "your Meta credit is visible, auto top-off is off and a spend limit is set."
             )
+        from airgap.models.budget import BudgetedModel, cap_from_env
         from airgap.models.meta import MetaModel
 
-        return MetaModel.from_env()
+        # Every real model is wrapped: a hard cap on total spend, remembered across runs.
+        return BudgetedModel(MetaModel.from_env(), cap_usd=cap_from_env())
     sys.exit(f"unknown provider {provider}")
 
 
@@ -91,7 +93,14 @@ def run_eval(args: argparse.Namespace) -> None:
 
     model = make_model(args.provider)
     # The fake model does not simulate prompt defenses, so condition B is skipped offline.
-    trials = run_suite(model, args.trials, include_prompt_defense=args.provider != "fake")
+    only = tuple(args.conditions.split(",")) if args.conditions else None
+    trials = run_suite(
+        model,
+        args.trials,
+        include_prompt_defense=args.provider != "fake",
+        split=args.split,
+        only=only,
+    )
     # Offline, the report opens with the plumbing-only note; repeat it after the tables.
     print(report(trials, model.name))
     if args.provider == "fake":
@@ -113,6 +122,17 @@ def serve(args: argparse.Namespace) -> None:
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
+def show_spend(args: argparse.Namespace) -> None:
+    import json
+
+    from airgap.models.budget import DEFAULT_LEDGER, cap_from_env
+
+    spent = 0.0
+    if DEFAULT_LEDGER.exists():
+        spent = float(json.loads(DEFAULT_LEDGER.read_text())["spent_usd"])
+    print(f"recorded real-model spend: ${spent:.4f} of ${cap_from_env():.2f} cap")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="airgap")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -121,11 +141,17 @@ def main(argv: list[str] | None = None) -> None:
     d.add_argument("--channel", default="css_display_none")
     d.add_argument("--provider", choices=["fake", "meta"], default="fake")
     d.set_defaults(func=demo)
+    sp = sub.add_parser("spend", help="show recorded real-model spend against the cap")
+    sp.set_defaults(func=show_spend)
     e = sub.add_parser("eval", help="run the evaluation suite")
     e.add_argument("--suite", choices=["core"], default="core")
     e.add_argument("--trials", type=int, default=1)
     e.add_argument("--provider", choices=["fake", "meta"], default="fake")
     e.add_argument("--out", default="results/eval.json")
+    e.add_argument("--split", choices=["all", "tuning", "heldout"], default="all")
+    e.add_argument(
+        "--conditions", default=None, help="comma-separated condition names (default: all)"
+    )
     e.set_defaults(func=run_eval)
     s = sub.add_parser("serve", help="serve the side-by-side demo console")
     s.add_argument("--host", default="127.0.0.1")

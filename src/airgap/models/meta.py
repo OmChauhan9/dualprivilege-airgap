@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from airgap.models.base import Completion, Message, Role
+from airgap.models.budget import MAX_OUTPUT_TOKENS
 
 DEFAULT_BASE_URL = "https://api.meta.ai/v1"
 DEFAULT_MODEL = "muse-spark-1.3"
@@ -61,6 +62,7 @@ class MetaModel:
             "model": self.name,
             "messages": messages,
             "temperature": self.temperature,
+            "max_tokens": MAX_OUTPUT_TOKENS,  # bounds the worst-case cost of every call
         }
         if schema is not None:
             kwargs["response_format"] = {

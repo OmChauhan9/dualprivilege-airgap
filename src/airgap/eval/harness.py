@@ -119,11 +119,23 @@ def run_suite(
     trials: int = 1,
     include_prompt_defense: bool = False,
     split: Split = "all",
+    only: tuple[str, ...] | None = None,
 ) -> list[Trial]:
-    """Run every condition on the corpus. Use `split="tuning"` while developing a defense."""
+    """Run every condition on the corpus. Use `split="tuning"` while developing a defense.
+
+    `only` limits the run to named conditions, so a costly real-model run can go one at a time.
+    """
     cases = cases_for(split)
+    available = conditions(model, include_prompt_defense=True)
+    if only is not None:
+        unknown = [n for n in only if n not in available]
+        if unknown:
+            raise ValueError(f"unknown condition(s) {unknown}; choose from {sorted(available)}")
+    chosen = conditions(model, include_prompt_defense)
+    if only is not None:
+        chosen = {n: available[n] for n in only}
     results: list[Trial] = []
-    for name, run in conditions(model, include_prompt_defense).items():
+    for name, run in chosen.items():
         for case in cases:
             for t in range(trials):
                 out = run(case)

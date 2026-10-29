@@ -282,12 +282,16 @@ _META_PARAMS = {"scenario": "payment", "channel": "none", "provider": "meta"}
 
 
 @pytest.fixture
-def real_calls_enabled(monkeypatch):
+def real_calls_enabled(monkeypatch, tmp_path):
     """Guard open, but the 'real' model is the offline fake: no network client is ever built."""
+    import airgap.models.budget as budget
     import airgap.models.meta as meta
     from airgap.models.fake import FakeLLM
 
     monkeypatch.setenv("AIRGAP_ALLOW_REAL_CALLS", "1")
+    monkeypatch.setenv("AIRGAP_BUDGET_USD", "1")
+    monkeypatch.setattr(budget, "DEFAULT_LEDGER", tmp_path / "spend.json")
+    monkeypatch.setitem(budget.PRICES, "fake-llm", (0.0, 0.0))  # the fake costs nothing
     monkeypatch.setattr(meta.MetaModel, "from_env", classmethod(lambda cls: FakeLLM()))
 
 
