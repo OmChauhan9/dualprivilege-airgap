@@ -4,8 +4,9 @@ What was built for the hackathon, what it builds on, and the licenses involved.
 
 ## Built during the hackathon
 
-Everything in this repository was written for the Meta Global AI Developer Hackathon, from
-October 28, 2026 onward. No code was copied from the prior art below; it is cited for its ideas.
+Everything in this repository was written for the Meta Global AI Developer Hackathon. Design
+planning began on October 28, 2026; the git history, which is the verifiable record, begins on
+October 29, 2026. No code was copied from the prior art below; it is cited for its ideas.
 
 The git history is the record (`git log`). Merged pull requests:
 
