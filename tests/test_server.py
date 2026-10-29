@@ -346,3 +346,39 @@ def test_real_run_requires_the_browser_to_say_where_the_request_came_from(
     """Older browsers omit Sec-Fetch-Site; a missing header must not count as same-origin."""
     resp = client.get("/api/run/stream", params=_META_PARAMS, headers={"host": "127.0.0.1:8000"})
     assert resp.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["..%2f..%2f..%2fetc%2fpasswd", "%2e%2e/%2e%2e/pyproject.toml", "/etc/passwd", "a/../../x"],
+)
+def test_static_route_never_serves_files_outside_the_built_ui(tmp_path, path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>console</html>")
+    (tmp_path / "secret.txt").write_text("TOP-SECRET")
+    client = TestClient(create_app(results_path=tmp_path / "e.json", web_dir=dist))
+    resp = client.get("/" + path)
+    assert resp.status_code == 200 and "TOP-SECRET" not in resp.text
+    assert "console" in resp.text  # unknown paths fall back to the UI, nothing else
+
+
+def test_static_route_checks_containment_before_touching_the_filesystem(tmp_path, monkeypatch):
+    """CodeQL py/path-injection: a path outside the UI folder must never reach `is_file()`."""
+    from pathlib import Path
+
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>console</html>")
+    probed: list[Path] = []
+    real = Path.is_file
+
+    def spy(self):
+        probed.append(self)
+        return real(self)
+
+    monkeypatch.setattr(Path, "is_file", spy)
+    client = TestClient(create_app(results_path=tmp_path / "e.json", web_dir=dist))
+    client.get("/..%2f..%2fetc%2fpasswd")
+    outside = [p for p in probed if "etc" in p.parts and "passwd" in p.parts]
+    assert outside == []

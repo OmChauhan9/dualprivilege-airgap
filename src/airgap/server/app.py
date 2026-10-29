@@ -168,8 +168,10 @@ def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB
         index = web_dir / "index.html"
         if not index.is_file():
             return HTMLResponse(_NO_UI)
-        target = (web_dir / path).resolve()
-        if path and target.is_file() and target.is_relative_to(web_dir.resolve()):
+        root = web_dir.resolve()
+        target = (root / path).resolve()
+        # Containment first: a path outside the UI folder is never even probed on disk.
+        if path and target.is_relative_to(root) and target.is_file():
             return FileResponse(target)
         return FileResponse(index)
 
