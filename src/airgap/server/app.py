@@ -62,6 +62,16 @@ def _require_local_same_origin(request: Request) -> None:
         raise HTTPException(403, "real model runs must come from the console page itself")
 
 
+def _ui_files(web_dir: Path) -> dict[str, Path]:
+    """Every regular file under the built UI, keyed by its URL path ("assets/app.js")."""
+    root = web_dir.resolve()
+    return {
+        f.relative_to(root).as_posix(): f
+        for f in root.rglob("*")
+        if f.is_file() and not f.is_symlink()
+    }
+
+
 def _rate(r: Rate) -> dict[str, float | int]:
     lo, hi = r.interval()
     return {"k": r.k, "n": r.n, "lo": lo, "hi": hi}
@@ -168,9 +178,11 @@ def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB
         index = web_dir / "index.html"
         if not index.is_file():
             return HTMLResponse(_NO_UI)
-        target = (web_dir / path).resolve()
-        if path and target.is_file() and target.is_relative_to(web_dir.resolve()):
-            return FileResponse(target)
+        # The request path is only ever a lookup key into the files that really exist under the
+        # UI folder; it is never joined into a filesystem path. Anything else falls back to the UI.
+        served = _ui_files(web_dir)
+        if path and path in served:
+            return FileResponse(served[path])
         return FileResponse(index)
 
     return app

@@ -19,6 +19,9 @@ The git history is the record (`git log`). Merged pull requests:
 | [#12](https://github.com/OmChauhan9/dualprivilege-airgap/pull/12) | Every redirect hop checked before it is requested; non-2xx responses never read |
 | [#13](https://github.com/OmChauhan9/dualprivilege-airgap/pull/13) | Saved results record which model produced them |
 | [#14](https://github.com/OmChauhan9/dualprivilege-airgap/pull/14) | A cap the user states bounds payments; page-supplied amounts share a task budget |
+| [#15](https://github.com/OmChauhan9/dualprivilege-airgap/pull/15) | README, threat model, provenance and architecture diagram |
+| [#16](https://github.com/OmChauhan9/dualprivilege-airgap/pull/16) | Hard spending cap for real model calls; coping with real-model output |
+| [#17](https://github.com/OmChauhan9/dualprivilege-airgap/pull/17) | Fixes from an independent verifier; spend ledger kept outside the checkout |
 
 The core pipeline (mock world, unguarded baseline, airgap, policy engine) and the first evaluation
 harness were the first two commits on `main`, before the PR workflow started.
