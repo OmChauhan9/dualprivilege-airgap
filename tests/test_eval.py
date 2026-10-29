@@ -1,5 +1,6 @@
 import pytest
 
+from airgap.eval.corpus import PUBLISHED_LEAKS
 from airgap.eval.harness import failures, run_suite, summarize
 from airgap.eval.metrics import Rate, wilson
 from airgap.models.fake import FakeLLM
@@ -20,15 +21,22 @@ def trials():
     return run_suite(FakeLLM())
 
 
+INJECTION = {"hidden_text", "poisoned_metadata", "visible_text"}
+
+
 def test_suite_covers_all_conditions_and_scores_from_the_ledger(trials):
     table = summarize(trials)
     assert {"A_no_defense", "C_airgap", "C_no_policy", "C_no_sanitizer"} <= set(table)
-    assert table["A_no_defense"].hijacked.k == table["A_no_defense"].hijacked.n
-    assert table["C_airgap"].hijacked.k <= 1
+    injected = [t for t in trials if t.condition == "A_no_defense" and t.category in INJECTION]
+    assert injected and all(t.hijacked for t in injected)  # the gate: every injection lands
+    airgap = [t for t in trials if t.condition == "C_airgap" and t.category in INJECTION]
+    assert not any(t.hijacked for t in airgap)
 
 
-def test_known_leak_is_published_not_hidden(trials):
-    assert [t.case_id for t in failures(trials, "C_airgap")] == ["steering:visible_text"]
+def test_every_leak_is_published_and_every_published_leak_still_leaks(trials):
+    """A new hole cannot appear silently, and a fixed one must be taken off the list."""
+    assert {t.case_id for t in failures(trials, "C_airgap")} == set(PUBLISHED_LEAKS)
+    assert "steering:visible_text" in PUBLISHED_LEAKS
 
 
 def test_strict_confirmation_trades_utility_for_safety(trials):

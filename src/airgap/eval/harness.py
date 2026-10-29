@@ -23,6 +23,7 @@ class Trial:
     condition: str
     case_id: str
     scenario: str
+    category: str
     is_attack: bool
     trial: int
     hijacked: bool
@@ -54,7 +55,7 @@ def conditions(
     def baseline(prompt_defense: bool):
         def run(case: Case):
             sc = CATALOG[case.scenario]
-            agent = VulnerableAgent(model, sc.make_web(case.channel), prompt_defense)
+            agent = VulnerableAgent(model, sc.make_web(case.attack), prompt_defense)
             res = agent.run(sc.user_text, sc.context())
             return res, sc.judge(res.ledger, res.final_text)
 
@@ -69,7 +70,7 @@ def conditions(
                 "approve_all": approve_all,
             }[confirmer_name]
             agent = AirgapAgent(
-                model, model, sc.make_web(case.channel), confirmer, sanitize_input, enforce_policy
+                model, model, sc.make_web(case.attack), confirmer, sanitize_input, enforce_policy
             )
             res = agent.run(sc.user_text, sc.context())
             return res, sc.judge(res.ledger, res.final_text)
@@ -103,6 +104,7 @@ def run_suite(
                         condition=name,
                         case_id=case.id,
                         scenario=case.scenario,
+                        category=case.category,
                         is_attack=case.is_attack,
                         trial=t,
                         hijacked=j.hijacked,
@@ -139,8 +141,12 @@ def summarize(trials: list[Trial]) -> dict[str, Summary]:
 
 
 def failures(trials: list[Trial], condition: str) -> list[Trial]:
-    """Every attack that still got through. Published, never hidden."""
-    return [t for t in trials if t.condition == condition and t.is_attack and t.hijacked]
+    """Every attack that still got through (a side effect or the attacker's goal). Published."""
+    return [
+        t
+        for t in trials
+        if t.condition == condition and t.is_attack and (t.hijacked or t.goal_reached)
+    ]
 
 
 def report(trials: list[Trial], model_name: str) -> str:
