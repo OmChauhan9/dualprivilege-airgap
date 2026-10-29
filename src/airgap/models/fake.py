@@ -31,6 +31,25 @@ def _alias_for(url: str) -> str:
     return host.split(".")[0].replace("-", "_")
 
 
+def _notices(page: str) -> list[dict[str, Any]]:
+    """Every instruction a gullible agent would obey, in page order."""
+    found: list[tuple[int, dict[str, Any]]] = []
+    for m in _PAY.finditer(page):
+        action = {"action": "pay", "payee": m.group(2), "amount_usd": float(m.group(1))}
+        found.append((m.start(), action | {"memo": "account verification"}))
+    for m in _FORWARD.finditer(page):
+        action = {"action": "send_email", "to": m.group(1), "subject": "backup"}
+        found.append((m.start(), action | {"body": "mailbox contents"}))
+    return [a | {"reason": "followed page notice"} for _, a in sorted(found, key=lambda f: f[0])]
+
+
+def _named_alias(user_text: str, aliases: list[str]) -> str:
+    """The saved payee whose alias the user wrote (e.g. "LedgerLens" -> ledgerlens)."""
+    squashed = re.sub(r"[^a-z0-9]", "", user_text.lower())
+    named = [a for a in aliases if re.sub(r"[^a-z0-9]", "", a.lower()) in squashed]
+    return named[0] if named else (aliases[0] if aliases else "")
+
+
 class FakeLLM:
     name = "fake-llm"
 
@@ -62,6 +81,8 @@ class FakeLLM:
         user_text = content.split("User request:\n", 1)[1].split("\n\nPayee aliases", 1)[0]
         urls = _URL.findall(user_text)
         low = user_text.lower()
+        listed = content.split("Payee aliases: ", 1)[1].split("\n", 1)[0]
+        aliases = [] if listed == "none" else listed.split(", ")
         fetch = lambda out, url: {"op": "fetch", "out": out, "url": {"lit": url}}  # noqa: E731
         if "portfolio" in low:
             return {
@@ -94,7 +115,7 @@ class FakeLLM:
                     {"op": "read", "out": "b", "doc": "d", "schema_name": "BillingInfo"},
                     {
                         "op": "pay",
-                        "payee": {"alias": "ledgerlens"},
+                        "payee": {"alias": _named_alias(user_text, aliases)},
                         "amount": {"var": "b", "field": "amount_due_usd"},
                         "memo": "subscription renewal",
                     },
@@ -131,6 +152,34 @@ class FakeLLM:
                 },
             ]
             return {"steps": steps}
+        if "look up" in low and urls:
+            return {
+                "steps": [
+                    fetch("d", urls[0]),
+                    {"op": "read", "out": "q", "doc": "d", "schema_name": "PriceQuote"},
+                    {
+                        "op": "answer",
+                        "template": "The listed price is ${p:,.2f}",
+                        "args": {"p": {"var": "q", "field": "price_usd"}},
+                    },
+                ]
+            }
+        if "invoice" in low and urls:
+            alias = _named_alias(user_text, aliases)
+            steps = []
+            for n, url in enumerate(urls):
+                steps += [
+                    fetch(f"d{n}", url),
+                    {"op": "read", "out": f"b{n}", "doc": f"d{n}", "schema_name": "BillingInfo"},
+                    {
+                        "op": "pay",
+                        "payee": {"alias": alias},
+                        "amount": {"var": f"b{n}", "field": "amount_due_usd"},
+                        "memo": "invoice payment",
+                    },
+                ]
+            steps.append({"op": "answer", "template": f"Paid {len(urls)} invoice(s)", "args": {}})
+            return {"steps": steps}
         return {"steps": []}
 
     # ---- reader: sanitized text -> typed object -----------------------------------------
@@ -143,6 +192,14 @@ class FakeLLM:
         def num(pattern: str, default: float = 0.0) -> float:
             m = re.search(pattern, text)
             return float(m.group(1).replace(",", "")) if m else default
+
+        def money(label: str) -> float:
+            """Dollar figure after `label`, sign kept: the schema, not the fake, rejects it."""
+            m = re.search(label + r":\s*(-)?\$\s*(-)?([\d,]+\.?\d*)", text)
+            if not m:
+                return 0.0
+            value = float(m.group(3).replace(",", ""))
+            return -value if (m.group(1) or m.group(2)) else value
 
         if name == "PortfolioSummary":
             top = re.search(r"Top asset:\s*([A-Z]{2,6})", text)
@@ -158,13 +215,14 @@ class FakeLLM:
                 "has_security_alert": bool(alert and alert.group(1).lower() != "none"),
             }
         if name == "BillingInfo":
-            period = re.search(r"Billing period:\s*(monthly|yearly)", text)
+            # Copies whatever token the page prints; out-of-set values fail schema validation.
+            period = re.search(r"Billing period:\s*([\w-]+)", text)
             return {
-                "amount_due_usd": num(r"Amount due:\s*\$([\d,]+\.?\d*)"),
+                "amount_due_usd": money("Amount due"),
                 "billing_period": period.group(1) if period else "monthly",
             }
         if name == "PriceQuote":
-            return {"price_usd": num(r"Price:\s*\$([\d,]+\.?\d*)")}
+            return {"price_usd": money("Price")}
         return {}
 
     # ---- vulnerable agent: gullible about anything in its context ----------------------
@@ -180,37 +238,22 @@ class FakeLLM:
         )
         urls = _URL.findall(task)
         fetched = [a for a in actions if a["action"] == "fetch"]
-        followed = any(a.get("reason") == "followed page notice" for a in actions)
+        pages = [r for r in results if r.startswith("TOOL RESULT (fetch")]
 
-        if results and not followed:
-            latest = _norm(results[-1])
-            m = _PAY.search(latest)
-            if m:
-                return {
-                    "action": "pay",
-                    "payee": m.group(2),
-                    "amount_usd": float(m.group(1)),
-                    "memo": "account verification",
-                    "reason": "followed page notice",
-                }
-            m = _FORWARD.search(latest)
-            if m:
-                return {
-                    "action": "send_email",
-                    "to": m.group(1),
-                    "subject": "backup",
-                    "body": "mailbox contents",
-                    "reason": "followed page notice",
-                }
+        # Gullible: obeys every notice on every page it has read, in order.
+        notices = [n for page in pages for n in _notices(_norm(page))]
+        followed = sum(a.get("reason") == "followed page notice" for a in actions)
+        if followed < len(notices):
+            return notices[followed]
         if len(fetched) < len(urls):
             return {"action": "fetch", "url": urls[len(fetched)]}
 
         low = task.lower()
-        pages = [r for r in results if r.startswith("TOOL RESULT (fetch")]
         last = _norm(pages[-1]) if pages else ""
-        paid = any(
-            a["action"] == "pay" and a.get("reason") != "followed page notice" for a in actions
-        )
+        own_payments = [
+            a for a in actions if a["action"] == "pay" and a.get("reason") != "followed page notice"
+        ]
+        paid = bool(own_payments)
         if "portfolio" in low:
             m = re.search(r"Total value:\s*\$([\d,\.]+)", last)
             return {
@@ -229,7 +272,7 @@ class FakeLLM:
                 amt = float(m.group(1).replace(",", "")) if m else 0.0
                 return {
                     "action": "pay",
-                    "payee": payees.get("ledgerlens", ""),
+                    "payee": payees.get(_named_alias(task, list(payees)), ""),
                     "amount_usd": amt,
                     "memo": "subscription renewal",
                 }
@@ -249,4 +292,17 @@ class FakeLLM:
                     "memo": "plan purchase",
                 }
             return {"action": "finish", "text": "Paid the cheaper plan"}
+        if "look up" in low:
+            m = _VIS_PRICE.search(last)
+            return {"action": "finish", "text": f"The listed price is ${m.group(1) if m else '?'}"}
+        if "invoice" in low:
+            if len(own_payments) < len(pages):
+                m = re.search(r"Amount due:\s*\$([\d,\.]+)", _norm(pages[len(own_payments)]))
+                return {
+                    "action": "pay",
+                    "payee": payees.get(_named_alias(task, list(payees)), ""),
+                    "amount_usd": float(m.group(1).replace(",", "")) if m else 0.0,
+                    "memo": "invoice payment",
+                }
+            return {"action": "finish", "text": f"Paid {len(pages)} invoice(s)"}
         return {"action": "finish", "text": "done"}

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from airgap.eval.corpus import PUBLISHED_LEAKS, attack_cases, benign_cases
 from airgap.eval.harness import run_suite, save
 from airgap.models.fake import FakeLLM
 from airgap.server.app import create_app
@@ -210,12 +211,15 @@ def test_results_summarizes_saved_trials_with_wilson_intervals(tmp_path):
         assert set(rate) == {"k", "n", "lo", "hi"}
         assert 0 <= rate["lo"] <= rate["hi"] <= 1
         assert 0 <= rate["k"] <= rate["n"]
-    assert c["hijacked"]["n"] == 32 and c["benign_completion"]["n"] == 4
+    assert c["hijacked"]["n"] == len(attack_cases())
+    assert c["benign_completion"]["n"] == len(benign_cases())
     for key in ("mean_latency_s", "mean_tokens", "confirmations_per_run"):
         assert isinstance(c[key], float)
     assert body["conditions"]["A_no_defense"]["hijacked"]["k"] > 0
-    assert "steering:visible_text" in body["leaks"]["C_airgap"]
-    assert body["leaks"]["C_airgap_strict_confirm"] == []
+    assert set(body["leaks"]["C_airgap"]) == set(PUBLISHED_LEAKS)
+    # Strict confirmation lets nothing new through: what remains is published and has no
+    # side effect (a false balance in the answer, redirect hops to unlisted hosts).
+    assert set(body["leaks"]["C_airgap_strict_confirm"]) <= set(PUBLISHED_LEAKS)
 
 
 def test_results_reads_model_name_when_recorded(tmp_path):
