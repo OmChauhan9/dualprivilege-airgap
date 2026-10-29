@@ -119,7 +119,14 @@ class Interpreter:
         if not self.policy.authorize("fetch", {"url": url.value}, decision):
             result.blocked.append(f"fetch {url.value}: {decision.reason}")
             raise FetchError(decision.reason)
-        doc = self.fetcher.fetch(str(url.value))
+
+        def check_hop(next_url: str) -> None:
+            hop = self.policy.check_fetch(trusted(next_url))
+            if not self.policy.authorize("fetch_redirect", {"url": next_url}, hop):
+                result.blocked.append(f"redirect to {next_url}: {hop.reason}")
+                raise FetchError(hop.reason)
+
+        doc = self.fetcher.fetch(str(url.value), check_hop=check_hop)
         self.policy.note_untrusted_input()
         self.tools.ledger.fetches.append(doc.provenance.final_url)
         self.audit.emit(

@@ -79,7 +79,7 @@ def test_report_lists_every_attack_that_got_through_for_every_condition(trials, 
         for t in failures(trials, cond):
             assert t.case_id in text
     # Published leaks carry their reason and tracking link next to the case.
-    assert "issues/9" in text and "known limitation" in text
+    assert "issues/2" in text and "known limitation" in text
 
 
 def test_report_never_prints_a_bare_percent(text):

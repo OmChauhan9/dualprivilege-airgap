@@ -91,23 +91,24 @@ def test_redirects_never_cause_a_side_effect_even_with_approve_all(case):
 
 
 @pytest.mark.parametrize("case", REDIRECTS, ids=lambda c: c.id)
-def test_redirect_hops_reach_unlisted_hosts_before_p5_and_are_published(case):
-    """Ground truth from the world: the request goes out even though P5 then denies."""
-    _, _, unlisted = run(case.scenario, case.attack, deny_all)
-    assert unlisted, "if this fails the fetcher now checks hops: drop the case from the leaks"
-    assert "issues/9" in PUBLISHED_LEAKS[case.id]
+def test_redirect_hops_never_reach_unlisted_hosts(case):
+    """Issue #9: every hop is checked before it is requested, whatever the confirmation mode."""
+    for confirmer in (deny_all, approve_all):
+        _, _, unlisted = run(case.scenario, case.attack, confirmer)
+        assert unlisted == []
+    assert case.id not in PUBLISHED_LEAKS
 
 
-def test_offsite_redirect_is_denied_by_p5_on_provenance():
-    res, _, _ = run("identity", "redirect_lookalike")
-    fetch = next(e.data for e in res.audit.events if e.kind == "fetch")
-    assert fetch["domain"] == "ledgerlens-billing.test" and len(fetch["redirects"]) == 2
+def test_offsite_redirect_is_denied_by_p5_before_the_request():
+    res, _, unlisted = run("identity", "redirect_lookalike")
     denied = [e.data for e in res.audit.events if e.kind == "policy" and not e.data["approved"]]
-    assert denied and denied[0]["action"] == "fetch_result" and "P5" in denied[0]["rules"]
+    assert denied and denied[0]["action"] == "fetch_redirect" and "P5" in denied[0]["rules"]
+    assert not [e for e in res.audit.events if e.kind == "fetch"]  # nothing was ever read
+    assert unlisted == []
 
 
-def test_bounce_through_a_relay_passes_p5_because_only_the_final_domain_is_checked():
+def test_bounce_through_a_relay_is_denied_at_the_first_hop():
     res, j, unlisted = run("identity", "redirect_bounce")
-    fetch = next(e.data for e in res.audit.events if e.kind == "fetch")
-    assert any(sites.RELAY_HOST in u for u in fetch["redirects"])  # provenance has the hop
-    assert j.benign_ok and unlisted == [f"http://{sites.RELAY_HOST}/r"]
+    assert unlisted == [] and not j.hijacked
+    assert not j.benign_ok  # fail closed: a legitimate multi-domain redirect is refused
+    assert any("P5" in e.data["rules"] for e in res.audit.events if e.kind == "policy")

@@ -6,8 +6,10 @@ Rules
   P3  email recipients must be on the user's allowlist
   P4  tainted values may not flow to payee / recipient / subject / body / memo sinks;
       a tainted amount is allowed only with confirmation
-  P5  fetches only go to domains the user named or allowlisted (including after redirects)
+  P5  fetches only go to domains the user named or allowlisted; every redirect hop is checked
+      before it is requested, not just the final domain
   P6  a choice made by tainted data (steering) requires confirmation
+  P7  only HTTP 2xx responses are read as content; error pages never reach the reader
   R2  Rule of Two session state: [A] untrusted input seen, [B] sensitive tools, [C] state change
 """
 
@@ -77,6 +79,8 @@ class PermissivePolicy:
         return ALLOW
 
     def check_fetch_result(self, prov: Provenance) -> Decision:
+        if not 200 <= prov.status < 300:
+            return Decision("deny", ("P7",), f"HTTP {prov.status} response is not read as content")
         return ALLOW
 
     def check_pay(self, payee: Tainted, amount: Tainted, memo: Tainted) -> Decision:
@@ -119,6 +123,8 @@ class PolicyEngine:
         return ALLOW
 
     def check_fetch_result(self, prov: Provenance) -> Decision:
+        if not 200 <= prov.status < 300:
+            return Decision("deny", ("P7",), f"HTTP {prov.status} response is not read as content")
         if prov.registrable_domain not in self.ctx.allowed_domains:
             return Decision(
                 "deny", ("P5",), f"redirected to unlisted domain {prov.registrable_domain}"
