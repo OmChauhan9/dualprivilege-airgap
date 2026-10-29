@@ -5,12 +5,15 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import cast
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
 from airgap.core.airgap import AirgapAgent
 from airgap.core.audit import Event
 from airgap.core.result import RunResult
+from airgap.eval.corpus import Split, is_heldout
 from airgap.models.base import ChatModel, RealCallsDisabled
+from airgap.models.budget import BudgetExceeded
 from airgap.models.fake import FakeLLM
 from airgap.world.scenarios import SCENARIOS, Scenario
 
@@ -76,6 +79,12 @@ def _show(title: str, res: RunResult, sc: Scenario, channel: str | None) -> None
 def demo(args: argparse.Namespace) -> None:
     sc = SCENARIOS[args.scenario]
     channel = None if args.channel == "none" else args.channel
+    case_id = f"{args.scenario}:{channel or 'benign'}"
+    if args.provider != "fake" and is_heldout(case_id):
+        sys.exit(
+            f"Refusing a real-model demo of {case_id}: it is a held-out case and must stay "
+            "unseen until the final evaluation. Pick another scenario or channel."
+        )
     model = make_model(args.provider)
     print(f"{BOLD}{sc.title}{RESET}\nuser: {sc.user_text}\nchannel: {channel or 'benign page'}")
     base = VulnerableAgent(model, sc.make_web(channel)).run(sc.user_text, sc.context())
@@ -91,16 +100,32 @@ def run_eval(args: argparse.Namespace) -> None:
 
     from airgap.eval.harness import OFFLINE_NOTE, report, run_suite, save
 
+    split = resolve_split(args)
+    if args.provider != "fake" and split == "all" and not args.allow_heldout:
+        sys.exit(
+            "Refusing --split all on a real model: it would spend the held-out cases, which stay "
+            "unseen until the final run. Use --split tuning, or --split heldout deliberately, or "
+            "pass --allow-heldout."
+        )
     model = make_model(args.provider)
     # The fake model does not simulate prompt defenses, so condition B is skipped offline.
     only = tuple(args.conditions.split(",")) if args.conditions else None
-    trials = run_suite(
-        model,
-        args.trials,
-        include_prompt_defense=args.provider != "fake",
-        split=args.split,
-        only=only,
-    )
+    trials: list = []
+    try:
+        run_suite(
+            model,
+            args.trials,
+            include_prompt_defense=args.provider != "fake",
+            split=split,
+            only=only,
+            sink=trials,
+        )
+    except BudgetExceeded as exc:
+        # Keep what was already paid for, say plainly that the run is incomplete, and fail.
+        # Beside the results, never over them: a stopped run must not replace a complete one.
+        partial = Path(args.out).with_suffix(".partial.json")
+        save(trials, partial, model_name=model.name, incomplete=True)
+        sys.exit(f"STOPPED by the spend cap after {len(trials)} trials (saved to {partial}): {exc}")
     # Offline, the report opens with the plumbing-only note; repeat it after the tables.
     print(report(trials, model.name))
     if args.provider == "fake":
@@ -136,7 +161,14 @@ def show_spend(args: argparse.Namespace) -> None:
     )
 
 
-def main(argv: list[str] | None = None) -> None:
+def resolve_split(args: argparse.Namespace) -> Split:
+    """Real runs default to the tuning split, so held-out cases are spent only on purpose."""
+    if args.split is not None:
+        return cast(Split, args.split)
+    return "all" if args.provider == "fake" else "tuning"
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="airgap")
     sub = parser.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("demo", help="run one scenario against both agents")
@@ -151,7 +183,17 @@ def main(argv: list[str] | None = None) -> None:
     e.add_argument("--trials", type=int, default=1)
     e.add_argument("--provider", choices=["fake", "meta"], default="fake")
     e.add_argument("--out", default="results/eval.json")
-    e.add_argument("--split", choices=["all", "tuning", "heldout"], default="all")
+    e.add_argument(
+        "--split",
+        choices=["all", "tuning", "heldout"],
+        default=None,
+        help="default: all for the offline model, tuning for real models",
+    )
+    e.add_argument(
+        "--allow-heldout",
+        action="store_true",
+        help="allow --split all on a real model (spends the held-out cases)",
+    )
     e.add_argument(
         "--conditions", default=None, help="comma-separated condition names (default: all)"
     )
@@ -162,7 +204,11 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--results", default="results/eval.json")
     s.add_argument("--web-dir", default=None, help="built UI (default: web/dist in the repo)")
     s.set_defaults(func=serve)
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
     try:
         args.func(args)
     except RealCallsDisabled as exc:

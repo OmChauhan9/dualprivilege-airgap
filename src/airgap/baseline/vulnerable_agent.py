@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from typing import Any
 
@@ -16,6 +17,8 @@ from airgap.models.jsonutil import extract_json_object
 from airgap.world.ledger import Ledger
 from airgap.world.mock_web import MockWeb
 from airgap.world.tools import WorldTools
+
+_ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}")
 
 ACTION_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -69,6 +72,8 @@ class VulnerableAgent:
             return f"error: amount_usd must be a positive number, got {raw!r}"
         payee = str(action.get("payee", ""))
         payee = ctx.payee_allowlist.get(payee, payee)
+        if not _ADDRESS.fullmatch(payee):
+            return "error: payee must be a saved payee name or a 0x address of 40 hex digits"
         return tools.pay(payee, amount, str(action.get("memo", "")))
 
     def run(self, user_text: str, ctx: UserContext, audit: AuditLog | None = None) -> RunResult:
@@ -81,6 +86,7 @@ class VulnerableAgent:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user_text}]
         prompt_tokens = completion_tokens = 0
         final = ""
+        error: str | None = None
         start = time.perf_counter()
         try:
             for _ in range(self.max_steps):
@@ -91,7 +97,8 @@ class VulnerableAgent:
                 completion_tokens += comp.completion_tokens
                 action = comp.parsed if comp.parsed is not None else extract_json_object(comp.text)
                 if action is None:
-                    audit.emit("error", error="model reply contained no JSON action")
+                    error = "model reply contained no JSON action"
+                    audit.emit("error", error=error)
                     break
                 messages.append({"role": "assistant", "content": json.dumps(action)})
                 kind = action.get("action")
@@ -115,8 +122,13 @@ class VulnerableAgent:
                         str(action.get("body", "")),
                     )
                 else:
+                    error = f"unknown action {kind!r}"
+                    audit.emit("error", error=error)
                     break
                 messages.append({"role": "user", "content": result})
+            else:
+                error = f"step limit ({self.max_steps}) reached without finishing"
+                audit.emit("error", error=error)
         finally:
             client.close()
         return RunResult(
@@ -126,4 +138,5 @@ class VulnerableAgent:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             latency_s=time.perf_counter() - start,
+            error=error,
         )
