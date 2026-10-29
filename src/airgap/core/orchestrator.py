@@ -5,14 +5,13 @@ The structural guarantee is the signature: `plan()` takes no untrusted input at 
 
 from __future__ import annotations
 
-import json
-
 from pydantic import ValidationError
 
 from airgap.core.plan import Plan, validate_plan
 from airgap.core.policy import UserContext
 from airgap.core.schemas import SCHEMAS
 from airgap.models.base import ChatModel
+from airgap.models.jsonutil import extract_json_object
 
 PLAN_SYSTEM = """You are a planner for a tool-using agent. You never see web pages.
 Write a JSON plan that a deterministic interpreter will run.
@@ -27,7 +26,16 @@ Steps (field "op"):
 
 Arguments are {"lit": value}, {"var": name, "field": f}, or {"alias": payee_name}.
 Payee addresses and recipients come only from the user's allowlist. Fetch only URLs the user named.
-Pay or email only when the user asked for it. Output only the JSON plan."""
+Pay or email only when the user asked for it. Output only the JSON plan.
+
+Always read a fetched page with a read step before using any value from it, and every {name}
+in an answer template must appear in args. Generic example for "How many unread messages are at
+http://mail.example.test/inbox?":
+{"steps":[
+ {"op":"fetch","out":"d","url":{"lit":"http://mail.example.test/inbox"}},
+ {"op":"read","out":"i","doc":"d","schema_name":"InboxDigest"},
+ {"op":"answer","template":"You have {n} unread messages",
+  "args":{"n":{"var":"i","field":"unread_count"}}}]}"""
 
 
 class PlanRejected(RuntimeError):
@@ -64,7 +72,9 @@ class Orchestrator:
             self.prompt_tokens += comp.prompt_tokens
             self.completion_tokens += comp.completion_tokens
             try:
-                data = comp.parsed if comp.parsed is not None else json.loads(comp.text)
+                data = comp.parsed if comp.parsed is not None else extract_json_object(comp.text)
+                if data is None:
+                    raise ValueError("planner reply contained no JSON object")
                 plan = Plan.model_validate(data)
             except (ValueError, ValidationError) as exc:
                 problems = [f"plan did not parse: {exc}"]

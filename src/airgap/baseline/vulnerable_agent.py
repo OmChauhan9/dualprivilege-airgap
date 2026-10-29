@@ -11,6 +11,7 @@ from airgap.core.fetcher import Fetcher, FetchError
 from airgap.core.policy import UserContext
 from airgap.core.result import RunResult
 from airgap.models.base import ChatModel
+from airgap.models.jsonutil import extract_json_object
 from airgap.world.ledger import Ledger
 from airgap.world.mock_web import MockWeb
 from airgap.world.tools import WorldTools
@@ -69,9 +70,9 @@ class VulnerableAgent:
                 comp = self.model.complete(messages, role="agent", schema=ACTION_SCHEMA)
                 prompt_tokens += comp.prompt_tokens
                 completion_tokens += comp.completion_tokens
-                try:
-                    action = comp.parsed if comp.parsed is not None else json.loads(comp.text)
-                except ValueError:
+                action = comp.parsed if comp.parsed is not None else extract_json_object(comp.text)
+                if action is None:
+                    audit.emit("error", error="model reply contained no JSON action")
                     break
                 messages.append({"role": "assistant", "content": json.dumps(action)})
                 kind = action.get("action")
