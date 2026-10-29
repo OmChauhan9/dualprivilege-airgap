@@ -125,12 +125,13 @@ def serve(args: argparse.Namespace) -> None:
 def show_spend(args: argparse.Namespace) -> None:
     import json
 
-    from airgap.models.budget import DEFAULT_LEDGER, cap_from_env
+    from airgap.models.budget import cap_from_env, default_ledger
 
     spent = 0.0
-    if DEFAULT_LEDGER.exists():
-        spent = float(json.loads(DEFAULT_LEDGER.read_text())["spent_usd"])
-    print(f"recorded real-model spend: ${spent:.4f} of ${cap_from_env():.2f} cap")
+    ledger = default_ledger()
+    if ledger.exists():
+        spent = float(json.loads(ledger.read_text())["spent_usd"])
+    print(f"recorded real-model spend: ${spent:.4f} of ${cap_from_env():.2f} cap  ({ledger})")
 
 
 def main(argv: list[str] | None = None) -> None:

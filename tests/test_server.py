@@ -290,7 +290,7 @@ def real_calls_enabled(monkeypatch, tmp_path):
 
     monkeypatch.setenv("AIRGAP_ALLOW_REAL_CALLS", "1")
     monkeypatch.setenv("AIRGAP_BUDGET_USD", "1")
-    monkeypatch.setattr(budget, "DEFAULT_LEDGER", tmp_path / "spend.json")
+    monkeypatch.setenv("AIRGAP_SPEND_LEDGER", str(tmp_path / "spend.json"))
     monkeypatch.setitem(budget.PRICES, "fake-llm", (0.0, 0.0))  # the fake costs nothing
     monkeypatch.setattr(meta.MetaModel, "from_env", classmethod(lambda cls: FakeLLM()))
 
