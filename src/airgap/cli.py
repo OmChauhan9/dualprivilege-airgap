@@ -93,7 +93,14 @@ def run_eval(args: argparse.Namespace) -> None:
 
     model = make_model(args.provider)
     # The fake model does not simulate prompt defenses, so condition B is skipped offline.
-    trials = run_suite(model, args.trials, include_prompt_defense=args.provider != "fake")
+    only = tuple(args.conditions.split(",")) if args.conditions else None
+    trials = run_suite(
+        model,
+        args.trials,
+        include_prompt_defense=args.provider != "fake",
+        split=args.split,
+        only=only,
+    )
     # Offline, the report opens with the plumbing-only note; repeat it after the tables.
     print(report(trials, model.name))
     if args.provider == "fake":
@@ -141,6 +148,10 @@ def main(argv: list[str] | None = None) -> None:
     e.add_argument("--trials", type=int, default=1)
     e.add_argument("--provider", choices=["fake", "meta"], default="fake")
     e.add_argument("--out", default="results/eval.json")
+    e.add_argument("--split", choices=["all", "tuning", "heldout"], default="all")
+    e.add_argument(
+        "--conditions", default=None, help="comma-separated condition names (default: all)"
+    )
     e.set_defaults(func=run_eval)
     s = sub.add_parser("serve", help="serve the side-by-side demo console")
     s.add_argument("--host", default="127.0.0.1")
