@@ -186,7 +186,14 @@ class Interpreter:
         amount = self.resolve(step.amount)
         memo = trusted(step.memo)
         decision = self.policy.check_pay(payee, amount, memo)
-        args = {"payee": payee.value, "amount_usd": amount.value, "memo": step.memo}
+        args = {
+            "payee": payee.value,
+            "amount_usd": amount.value,
+            "memo": step.memo,
+            # What the confirmation dialog can show: where the number came from, and your cap.
+            "amount_sources": sorted(amount.sources | amount.steered_by),
+            "stated_cap_usd": self.ctx.stated_cap_usd,
+        }
         if self.policy.authorize("pay", args, decision):
             self.tools.pay(str(payee.value), float(amount.value), step.memo)
         else:

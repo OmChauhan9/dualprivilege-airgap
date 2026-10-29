@@ -2,7 +2,9 @@
 
 Rules
   P1  payee must be on the user's allowlist or written by the user in their own message
-  P2  amount must be positive, under the per-transaction limit and the session limit
+  P2  amount must be positive, under the per-transaction limit and the session limit; a cap the
+      user states in their own request bounds every payment and the task total; with no cap, the
+      amounts read from pages share the per-transaction limit as a task budget
   P3  email recipients must be on the user's allowlist
   P4  tainted values may not flow to payee / recipient / subject / body / memo sinks;
       a tainted amount is allowed only with confirmation
@@ -15,6 +17,7 @@ Rules
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -45,6 +48,13 @@ def approve_all(kind: str, args: dict[str, Any], decision: Decision) -> bool:
     return True
 
 
+_CAP_RE = re.compile(
+    r"\b(?:up to|at most|no more than|not more than|max(?:imum)?(?: of)?)\s+\$\s?"
+    r"(\d[\d,]*(?:\.\d+)?)",
+    re.I,
+)
+
+
 @dataclass
 class UserContext:
     user_text: str
@@ -54,6 +64,12 @@ class UserContext:
     per_tx_limit_usd: float = 100.0
     session_limit_usd: float = 200.0
     sensitive: bool = True  # Rule of Two [B]: the agent holds payment / mail authority
+
+    @property
+    def stated_cap_usd(self) -> float | None:
+        """A spending cap the user wrote in their own request. Never read from fetched content."""
+        found = _CAP_RE.findall(self.user_text)
+        return float(found[0].replace(",", "")) if found else None
 
     @property
     def allowed_domains(self) -> frozenset[str]:
@@ -100,6 +116,7 @@ class PolicyEngine:
         self.confirmer = confirmer
         self.untrusted_seen = False  # Rule of Two [A]
         self.spent_usd = 0.0
+        self.tainted_spent_usd = 0.0  # approved amounts that were read from pages
         self.confirmations = 0
 
     def note_untrusted_input(self) -> None:
@@ -148,6 +165,23 @@ class PolicyEngine:
             return Decision("deny", ("P2",), f"amount {amt:g} outside per-transaction limit")
         if self.spent_usd + amt > self.ctx.session_limit_usd:
             return Decision("deny", ("P2",), "session spend limit exceeded")
+        cap = self.ctx.stated_cap_usd
+        if cap is not None and self.spent_usd + amt > cap:
+            return Decision(
+                "deny",
+                ("P2",),
+                f"total {self.spent_usd + amt:g} would exceed your stated cap {cap:g}",
+            )
+        page_supplied = amount.is_tainted or amount.is_steered
+        if cap is None and page_supplied:
+            budget = self.ctx.per_tx_limit_usd
+            if self.tainted_spent_usd + amt > budget:
+                return Decision(
+                    "deny",
+                    ("P2",),
+                    f"amounts read from pages would total {self.tainted_spent_usd + amt:g}, over "
+                    f"the task budget {budget:g}; state a cap in your request to raise it",
+                )
         if amount.is_tainted:
             rules.append("P4")
         if payee.is_steered or amount.is_steered:
@@ -183,4 +217,6 @@ class PolicyEngine:
         )
         if approved and kind == "pay":
             self.spent_usd += float(args["amount_usd"])
+            if args.get("amount_sources"):
+                self.tainted_spent_usd += float(args["amount_usd"])
         return approved
