@@ -119,6 +119,7 @@ def test_real_client_always_sends_an_output_limit(monkeypatch):
                     return Resp
 
     m = meta.MetaModel.__new__(meta.MetaModel)
-    m.name, m.temperature, m._client = "muse-spark-1.3", 0.7, Client
+    m.name, m.temperature = "muse-spark-1.3", 0.7
+    m.__dict__["_client"] = Client
     m.complete([{"role": "user", "content": "hi"}], role="agent")
     assert sent["max_tokens"] == MAX_OUTPUT_TOKENS
