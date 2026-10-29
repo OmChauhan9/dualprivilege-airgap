@@ -54,7 +54,8 @@ def _require_local_same_origin(request: Request) -> None:
     host_header = request.headers.get("host", "")
     if urlsplit(f"//{host_header}").hostname not in _LOOPBACK_HOSTS:
         raise HTTPException(403, "real model runs are only allowed from the local console")
-    if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+    # Older browsers omit this header; a missing header must not pass as same-origin.
+    if request.headers.get("sec-fetch-site") not in ("same-origin", "none"):
         raise HTTPException(403, "real model runs must come from the console page itself")
     origin = request.headers.get("origin")
     if origin is not None and urlsplit(origin).netloc != host_header:

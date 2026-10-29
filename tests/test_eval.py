@@ -142,3 +142,14 @@ def test_report_still_renders_when_only_one_condition_ran():
 
     text = report(run_suite(FakeLLM(), only=("A_no_defense",)), "fake-llm")
     assert "A_no_defense" in text
+
+
+def test_report_headlines_the_data_driven_subset_next_to_the_overall_rate():
+    from airgap.eval.corpus import DATA_DRIVEN
+    from airgap.eval.harness import report, summarize
+
+    trials = run_suite(FakeLLM(), only=("C_airgap",))
+    s = summarize(trials)["C_airgap"]
+    n = len([t for t in trials if t.is_attack and t.category in DATA_DRIVEN])
+    assert s.data_driven_hijacked.n == n and 0 < n < s.hijacked.n
+    assert "data-driven attacks" in report(trials, "fake-llm")

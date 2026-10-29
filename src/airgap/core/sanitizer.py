@@ -17,7 +17,14 @@ _HIDDEN_STYLE = [
     ("css_visibility_hidden", re.compile(r"visibility\s*:\s*hidden", re.I)),
     ("css_opacity_zero", re.compile(r"opacity\s*:\s*0(\.0+)?\s*(;|$)", re.I)),
     ("tiny_font", re.compile(r"font-size\s*:\s*[0-2](\.\d+)?\s*(px|pt)?\s*(;|$)", re.I)),
-    ("off_screen", re.compile(r"(left|top|text-indent)\s*:\s*-\d{3,}", re.I)),
+    (
+        "tiny_font",
+        re.compile(r"font-size\s*:\s*(0*\.[0-2]\d*|0+)\s*(em|rem|%|ex|vw|vh)\s*(;|$)", re.I),
+    ),
+    ("off_screen", re.compile(r"(left|top|right|bottom|text-indent)\s*:\s*-\d{2,}", re.I)),
+    ("transparent_text", re.compile(r"(?<![-\w])color\s*:\s*transparent", re.I)),
+    ("clipped", re.compile(r"clip\s*:\s*rect\(\s*0", re.I)),
+    ("collapsed", re.compile(r"height\s*:\s*0(px)?\s*;[^\"]*overflow\s*:\s*hidden", re.I)),
 ]
 _WHITE = r"(#fff(fff)?|white|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\))"
 _WHITE_TEXT = re.compile(rf"(?<!background-)color\s*:\s*{_WHITE}", re.I)

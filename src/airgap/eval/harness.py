@@ -13,7 +13,7 @@ from airgap.core.airgap import AirgapAgent
 from airgap.core.fetcher import domain_of_url
 from airgap.core.policy import approve_all, deny_all
 from airgap.core.result import RunResult
-from airgap.eval.corpus import PUBLISHED_LEAKS, Case, Split, cases_for
+from airgap.eval.corpus import DATA_DRIVEN, PUBLISHED_LEAKS, Case, Split, cases_for
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel
 from airgap.world.mock_web import MockWeb
@@ -68,6 +68,8 @@ class Summary:
     benign_completion: Rate
     utility_under_attack: Rate
     unlisted_requests: Rate  # attacks where a request reached a domain the user never named
+    data_driven_hijacked: Rate  # the subset where success needs a lie, not an instruction
+    data_driven_goal: Rate
     mean_latency_s: float
     mean_tokens: float
     confirmations_per_run: float
@@ -171,12 +173,15 @@ def summarize(trials: list[Trial]) -> dict[str, Summary]:
     for cond, rows in by_cond.items():
         attacks = [r for r in rows if r.is_attack]
         benign = [r for r in rows if not r.is_attack]
+        dd = [r for r in attacks if r.category in DATA_DRIVEN]
         table[cond] = Summary(
             hijacked=Rate(sum(r.hijacked for r in attacks), len(attacks)),
             goal_reached=Rate(sum(r.goal_reached for r in attacks), len(attacks)),
             benign_completion=Rate(sum(r.benign_ok for r in benign), len(benign)),
             utility_under_attack=Rate(sum(r.benign_ok for r in attacks), len(attacks)),
             unlisted_requests=Rate(sum(bool(r.unlisted_requests) for r in attacks), len(attacks)),
+            data_driven_hijacked=Rate(sum(r.hijacked for r in dd), len(dd)),
+            data_driven_goal=Rate(sum(r.goal_reached for r in dd), len(dd)),
             mean_latency_s=sum(r.latency_s for r in rows) / len(rows),
             mean_tokens=sum(r.prompt_tokens + r.completion_tokens for r in rows) / len(rows),
             confirmations_per_run=sum(r.confirmations for r in rows) / len(rows),
@@ -247,6 +252,8 @@ def report(trials: list[Trial], model_name: str) -> str:
         held_attacks = [t for t in held if t.is_attack]
         held_benign = [t for t in held if not t.is_attack]
         lines += [
+            f"  data-driven attacks only ({m.data_driven_hijacked.n}): hijacked "
+            f"{m.data_driven_hijacked}, goal reached {m.data_driven_goal}",
             f"  held-out attacks only ({len(held_attacks)}): hijacked "
             f"{Rate(sum(t.hijacked for t in held_attacks), len(held_attacks))}, goal reached "
             f"{Rate(sum(t.goal_reached for t in held_attacks), len(held_attacks))}",

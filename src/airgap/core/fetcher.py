@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,6 +29,11 @@ HopCheck = Callable[[str], None]
 
 def registrable_domain(host: str) -> str:
     """Last two labels, or three for known multi-part suffixes. Offline and deterministic."""
+    host = host.strip("[]")
+    try:
+        return str(ipaddress.ip_address(host))  # an IP address is its own site
+    except ValueError:
+        pass
     labels = [p for p in host.lower().strip(".").split(".") if p]
     if len(labels) <= 2:
         return ".".join(labels)

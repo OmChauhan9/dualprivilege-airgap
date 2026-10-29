@@ -22,7 +22,7 @@ from airgap.core.plan import (
     SendEmail,
 )
 from airgap.core.policy import PermissivePolicy, PolicyEngine, UserContext
-from airgap.core.reader import Reader, ReaderError
+from airgap.core.reader import Reader
 from airgap.core.sanitizer import SanitizeResult, sanitize
 from airgap.core.values import Tainted, merge_sources, trusted
 from airgap.world.tools import WorldTools
@@ -39,6 +39,8 @@ class Choice:
 class ExecResult:
     answer: str | None = None
     blocked: list[str] = field(default_factory=list)
+    # Code-written summaries ("pay denied by P2"): safe to show, they never repeat page text.
+    denied: list[str] = field(default_factory=list)
     error: str | None = None
 
 
@@ -107,10 +109,18 @@ class Interpreter:
                     self._email(step, result)
                 elif isinstance(step, Answer):
                     result.answer = self._answer(step)
-            except (FetchError, ReaderError, KeyError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001 - anything unexpected must fail closed
                 result.error = f"{type(exc).__name__}: {exc}"
                 self.audit.emit("error", error=result.error)
                 break
+        if result.denied and result.answer is not None:
+            # The reply was drafted before anything ran; it may describe actions policy denied.
+            result.answer = (
+                "Not completed as planned: " + "; ".join(result.denied) + ". Some actions did "
+                "not run, so the drafted reply was withheld because it may describe things that "
+                "did not happen."
+            )
+            self.audit.emit("answer", text=result.answer, untrusted_derived=False)
         return result
 
     def _fetch(self, step: Fetch, result: ExecResult) -> None:
@@ -198,6 +208,7 @@ class Interpreter:
             self.tools.pay(str(payee.value), float(amount.value), step.memo)
         else:
             result.blocked.append(f"pay {amount.value} to {payee.value}: {decision.reason}")
+            result.denied.append(f"pay denied by {','.join(decision.rules) or 'policy'}")
 
     def _email(self, step: SendEmail, result: ExecResult) -> None:
         to = self.resolve(step.to)
@@ -207,6 +218,7 @@ class Interpreter:
             self.tools.send_email(str(to.value), step.subject, step.body)
         else:
             result.blocked.append(f"email to {to.value}: {decision.reason}")
+            result.denied.append(f"email denied by {','.join(decision.rules) or 'policy'}")
 
     def _answer(self, step: Answer) -> str:
         values = {name: self.resolve(arg) for name, arg in step.args.items()}

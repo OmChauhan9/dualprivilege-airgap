@@ -338,3 +338,11 @@ def test_offline_provider_is_not_gated_by_origin_checks(client):
         headers={"sec-fetch-site": "cross-site"},
     )
     assert resp.status_code == 200
+
+
+def test_real_run_requires_the_browser_to_say_where_the_request_came_from(
+    client, real_calls_enabled
+):
+    """Older browsers omit Sec-Fetch-Site; a missing header must not count as same-origin."""
+    resp = client.get("/api/run/stream", params=_META_PARAMS, headers={"host": "127.0.0.1:8000"})
+    assert resp.status_code == 403

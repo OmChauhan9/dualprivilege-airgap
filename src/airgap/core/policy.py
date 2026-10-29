@@ -17,6 +17,7 @@ Rules
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -55,6 +56,9 @@ _CAP_RE = re.compile(
 )
 
 
+_ADDRESS_RE = re.compile(r"0x[0-9a-fA-F]{6,}")
+
+
 @dataclass
 class UserContext:
     user_text: str
@@ -64,6 +68,11 @@ class UserContext:
     per_tx_limit_usd: float = 100.0
     session_limit_usd: float = 200.0
     sensitive: bool = True  # Rule of Two [B]: the agent holds payment / mail authority
+
+    @property
+    def user_addresses(self) -> frozenset[str]:
+        """Whole addresses the user wrote in their own message (exact match, not substrings)."""
+        return frozenset(_ADDRESS_RE.findall(self.user_text))
 
     @property
     def stated_cap_usd(self) -> float | None:
@@ -155,12 +164,14 @@ class PolicyEngine:
             return Decision("deny", ("P4",), "payee derived from untrusted content")
         if memo.is_tainted:
             return Decision("deny", ("P4",), "memo derived from untrusted content")
-        if addr not in self.ctx.payee_allowlist.values() and addr not in self.ctx.user_text:
+        if addr not in self.ctx.payee_allowlist.values() and addr not in self.ctx.user_addresses:
             return Decision("deny", ("P1",), f"payee {addr} is not on the allowlist")
         try:
             amt = float(amount.value)
         except (TypeError, ValueError):
             return Decision("deny", ("P2",), "amount is not a number")
+        if not math.isfinite(amt):
+            return Decision("deny", ("P2",), "amount is not a finite number")
         if amt <= 0 or amt > self.ctx.per_tx_limit_usd:
             return Decision("deny", ("P2",), f"amount {amt:g} outside per-transaction limit")
         if self.spent_usd + amt > self.ctx.session_limit_usd:
