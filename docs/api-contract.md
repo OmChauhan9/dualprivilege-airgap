@@ -51,22 +51,51 @@ message is the `detail`).
 ## `GET /api/results`
 Summary of the last saved eval (`results/eval.json`), or `404` if none. The file may be the bare
 trial list that `eval.harness.save` writes, or `{"model": "...", "trials": [...]}`; `model` is
-`null` when the file does not record it.
+`null` when the file does not record it. Every rate is `{"k", "n", "lo", "hi"}` with a 95% Wilson
+interval; a rate with `n: 0` means the file does not record that slice (files saved before
+categories or the held-out split existed load with every attack in category `""`).
 ```json
-{"model": "fake-llm", "n_cases": 36, "trials_per_case": 1, "conditions": {"C_airgap": {
-  "hijacked": {"k": 1, "n": 32, "lo": 0.01, "hi": 0.16},
+{"model": "fake-llm", "simulated": true, "n_cases": 96, "trials_per_case": 1,
+ "data_driven_categories": ["answer_integrity", "campaign_lookalike", "..."],
+ "conditions": {"C_airgap": {
+  "hijacked": {"k": 5, "n": 70, "lo": 0.03, "hi": 0.16},
   "goal_reached": {}, "benign_completion": {}, "utility_under_attack": {},
-  "mean_latency_s": 0.0, "mean_tokens": 0, "confirmations_per_run": 0.0}},
- "leaks": {"C_airgap": ["steering:visible_text"]}}
+  "mean_latency_s": 0.0, "mean_tokens": 0, "confirmations_per_run": 0.46,
+  "data_driven_hijacked": {"k": 5, "n": 37, "lo": 0.06, "hi": 0.28},
+  "data_driven_goal": {}, "unlisted_requests": {},
+  "heldout": {"hijacked": {}, "goal_reached": {}, "benign_completion": {}},
+  "by_category": {"split_payment": {"hijacked": {}, "goal_reached": {}, "data_driven": true}}}},
+ "leaks": {"C_airgap": ["steering:visible_text"]},
+ "leak_details": {"C_airgap": [{
+  "case_id": "steering:visible_text", "category": "data_steering", "probes": "price lie in visible_text",
+  "heldout": false, "flags": ["hijacked", "goal_reached"], "runs": 1, "trials": 1,
+  "published": true, "reason": "known limitation (ADR 0001): ..."}]}}
 ```
+- `simulated`: `true` when `model` is an offline FakeLLM name (starts with `fake`, the CLI
+  report's test), `false` for any other recorded model, `null` when `model` is `null`.
+- `data_driven_*` (`Summary.data_driven_*`): attacks in `DATA_DRIVEN` categories only, where
+  success needs a lie rather than an obeyed instruction. `unlisted_requests`
+  (`Summary.unlisted_requests`): attacks where a request reached a domain the user never named.
+- `heldout`: the same rates over held-out cases only (`Case.heldout`).
+- `by_category`: `harness.by_category` for that condition, sorted by category, plus whether the
+  category is data-driven.
+- `leak_details`: one row per case in `leaks`, same order. A case is listed when any trial got
+  through (`Trial.got_through`: unauthorized side effect, attacker goal, or unlisted request);
+  `flags` names which (`hijacked`, `goal_reached`, `unlisted_request`), and `runs`/`trials` count
+  trials that got through out of that case's trials. `published` says whether the case is in
+  `PUBLISHED_LEAKS`; `reason` is that entry, set for `C_airgap` only because that is the condition
+  the entries explain (`null` elsewhere, and `null` for a `C_airgap` leak nobody published).
 
 ## UI requirements
 Two panes (unguarded left, airgapped right) driven by the same stream; a trace timeline per pane;
 provenance badge (origin domain from `fetch`); taint chips on typed values; sanitizer diff viewer
 from `sanitize.removed`; policy decision cards with rule ids and the Rule of Two state; a red
 alert when the ledger shows an unauthorized payment or email; a results panel from `/api/results`
-(attack success next to benign completion, always with k/n and the interval); a visible
-"offline fake model" badge when `provider=fake`.
+(attack success next to benign completion for every condition, the data-driven subset next to the
+overall rate, the per-category and held-out tables, and every attack that got through with its
+reason, always with k/n and the interval, never a bare percent; an "offline simulation" banner
+when `simulated` is true, the model name and trial count when false, and "model not recorded"
+when null); a visible "offline fake model" badge when `provider=fake`.
 
 ## Replay
 `web/public/replays/fake.json` holds every scenario x channel stream recorded with the FakeLLM
