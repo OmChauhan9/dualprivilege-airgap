@@ -99,3 +99,13 @@ def test_zero_of_n_shows_its_upper_bound(trials, text):
 def test_offline_report_carries_the_loud_plumbing_note(text):
     assert "plumbing" in text and "not evidence about real models" in text
     assert "ablation rows" in text.lower() and "not informative" in text.lower()
+
+
+def test_results_saved_before_new_trial_fields_still_load(trials):
+    from dataclasses import asdict, fields
+
+    from airgap.eval.harness import Trial
+
+    old = {k: v for k, v in asdict(trials[0]).items() if k not in ("category", "heldout")}
+    names = {f.name for f in fields(Trial)}
+    assert Trial(**{k: v for k, v in old.items() if k in names}).category == ""

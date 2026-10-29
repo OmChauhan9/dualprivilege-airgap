@@ -7,14 +7,15 @@ from airgap.core.airgap import AirgapAgent
 from airgap.eval.corpus import benign_cases
 from airgap.models.fake import FakeLLM
 from airgap.world.ledger import Ledger, Payment
-from airgap.world.scenarios import CATALOG, SCENARIOS
+from airgap.world.scenarios import CATALOG, EVAL_SCENARIOS, SCENARIOS
 
 BENIGN = benign_cases()
 
 
 def test_original_scenario_ids_are_kept():
-    assert {"payment", "email", "identity", "steering"} <= set(SCENARIOS)
-    assert set(SCENARIOS) <= set(CATALOG)
+    """The demo list stays exactly the four the server and the recorded UI replays know."""
+    assert list(SCENARIOS) == ["payment", "email", "identity", "steering"]
+    assert set(SCENARIOS) <= set(EVAL_SCENARIOS) <= set(CATALOG)
 
 
 def test_benign_set_has_about_twenty_tasks_with_distinct_page_values():

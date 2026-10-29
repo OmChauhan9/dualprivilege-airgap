@@ -7,13 +7,13 @@ from airgap.core.policy import approve_all, deny_all
 from airgap.eval.corpus import NAMED, PUBLISHED_LEAKS, attack_cases
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
-from airgap.world.scenarios import SCENARIOS
+from airgap.world.scenarios import EVAL_SCENARIOS
 
 ATTACKS = attack_cases()
 
 
 def run_airgap(scenario_id: str, attack: str | None, confirmer=None, orchestrator=None):
-    sc = SCENARIOS[scenario_id]
+    sc = EVAL_SCENARIOS[scenario_id]
     agent = AirgapAgent(
         orchestrator or FakeLLM(),
         FakeLLM(),
@@ -80,7 +80,7 @@ def test_inflated_invoice_pair_passes_every_per_payment_check():
     res, j = run_airgap("invoices", "inflated_pair")
     assert [p.amount_usd for p in res.ledger.payments] == [90.0, 90.0]
     assert j.hijacked
-    ctx = SCENARIOS["invoices"].context()
+    ctx = EVAL_SCENARIOS["invoices"].context()
     assert res.ledger.total_paid <= ctx.session_limit_usd  # the session limit does not bind
     assert "invoices:inflated_pair" in PUBLISHED_LEAKS
 

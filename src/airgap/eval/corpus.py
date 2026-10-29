@@ -22,7 +22,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Literal
 
-from airgap.world.scenarios import CATALOG, SCENARIOS
+from airgap.world.scenarios import CATALOG, EVAL_SCENARIOS
 
 
 @dataclass(frozen=True)
@@ -179,7 +179,7 @@ def _case(sc_id: str, attack: str) -> Case:
 
 
 def attack_cases() -> list[Case]:
-    return [_case(sc.id, a) for sc in SCENARIOS.values() for a in (*sc.channels, *sc.attacks)]
+    return [_case(sc.id, a) for sc in EVAL_SCENARIOS.values() for a in (*sc.channels, *sc.attacks)]
 
 
 def benign_cases() -> list[Case]:

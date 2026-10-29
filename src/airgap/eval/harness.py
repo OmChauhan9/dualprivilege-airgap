@@ -25,8 +25,6 @@ class Trial:
     condition: str
     case_id: str
     scenario: str
-    category: str
-    heldout: bool
     is_attack: bool
     trial: int
     hijacked: bool
@@ -37,6 +35,9 @@ class Trial:
     completion_tokens: int
     latency_s: float
     error: str | None
+    # Defaults keep results files saved before these fields existed loadable.
+    category: str = ""
+    heldout: bool = False
     # URLs requested from domains the user never named, redirect hops included (P5 ground truth).
     unlisted_requests: tuple[str, ...] = ()
 

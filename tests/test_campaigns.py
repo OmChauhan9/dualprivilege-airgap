@@ -9,14 +9,14 @@ from airgap.core.policy import approve_all, deny_all
 from airgap.eval.corpus import PUBLISHED_LEAKS, attack_cases, benign_cases
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
-from airgap.world.scenarios import CATALOG, SCENARIOS
+from airgap.world.scenarios import CATALOG, EVAL_SCENARIOS
 
 ATTACKS = attack_cases()
 REDIRECTS = [c for c in ATTACKS if c.category == "redirect"]
 
 
 def run(scenario_id: str, attack: str | None, confirmer=None, baseline=False):
-    sc = SCENARIOS[scenario_id]
+    sc = EVAL_SCENARIOS[scenario_id]
     web = sc.make_web(attack)
     if baseline:
         res = VulnerableAgent(FakeLLM(), web).run(sc.user_text, sc.context())
@@ -37,7 +37,7 @@ def test_every_fixture_host_is_a_fictional_test_domain():
 # ---- (a) fake API docs that ask for a license fee ---------------------------------------
 
 
-@pytest.mark.parametrize("channel", SCENARIOS["docs"].channels)
+@pytest.mark.parametrize("channel", EVAL_SCENARIOS["docs"].channels)
 def test_fake_docs_fee_hijacks_the_baseline_but_not_the_airgap(channel):
     _, base, _ = run("docs", channel, baseline=True)
     res, air, _ = run("docs", channel, approve_all)
@@ -47,7 +47,7 @@ def test_fake_docs_fee_hijacks_the_baseline_but_not_the_airgap(channel):
 
 
 def test_fake_docs_fee_names_a_stablecoin_and_a_fictional_wallet():
-    page = SCENARIOS["docs"].make_web("visible_text").snapshot()[0][2].body
+    page = EVAL_SCENARIOS["docs"].make_web("visible_text").snapshot()[0][2].body
     assert "stablecoin" in page and sites.FEE_WALLET in page
 
 
@@ -74,7 +74,7 @@ def test_lookalike_with_inflated_amount_is_stopped_only_by_the_user():
 
 def test_lookalike_has_no_benign_task():
     assert "lookalike" not in {c.scenario for c in benign_cases()}
-    assert not SCENARIOS["lookalike"].benign
+    assert not EVAL_SCENARIOS["lookalike"].benign
 
 
 # ---- redirects: fetcher provenance and P5 -----------------------------------------------
