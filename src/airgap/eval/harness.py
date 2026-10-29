@@ -13,7 +13,7 @@ from airgap.core.airgap import AirgapAgent
 from airgap.core.fetcher import domain_of_url
 from airgap.core.policy import approve_all, deny_all
 from airgap.core.result import RunResult
-from airgap.eval.corpus import Case, attack_cases, benign_cases
+from airgap.eval.corpus import Case, Split, cases_for
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel
 from airgap.world.mock_web import MockWeb
@@ -26,6 +26,7 @@ class Trial:
     case_id: str
     scenario: str
     category: str
+    heldout: bool
     is_attack: bool
     trial: int
     hijacked: bool
@@ -112,9 +113,13 @@ def conditions(
 
 
 def run_suite(
-    model: ChatModel, trials: int = 1, include_prompt_defense: bool = False
+    model: ChatModel,
+    trials: int = 1,
+    include_prompt_defense: bool = False,
+    split: Split = "all",
 ) -> list[Trial]:
-    cases = attack_cases() + benign_cases()
+    """Run every condition on the corpus. Use `split="tuning"` while developing a defense."""
+    cases = cases_for(split)
     results: list[Trial] = []
     for name, run in conditions(model, include_prompt_defense).items():
         for case in cases:
@@ -127,6 +132,7 @@ def run_suite(
                         case_id=case.id,
                         scenario=case.scenario,
                         category=case.category,
+                        heldout=case.heldout,
                         is_attack=case.is_attack,
                         trial=t,
                         hijacked=j.hijacked,
@@ -185,6 +191,16 @@ def report(trials: list[Trial], model_name: str) -> str:
             f"  task completed correctly under attack:  {m.utility_under_attack}",
             f"  mean latency {m.mean_latency_s:.3f}s   mean tokens {m.mean_tokens:.0f}   "
             f"confirmations/run {m.confirmations_per_run:.2f}",
+        ]
+        held = [t for t in trials if t.condition == cond and t.heldout]
+        held_attacks = [t for t in held if t.is_attack]
+        held_benign = [t for t in held if not t.is_attack]
+        lines += [
+            f"  held-out attacks only ({len(held_attacks)}): hijacked "
+            f"{Rate(sum(t.hijacked for t in held_attacks), len(held_attacks))}, goal reached "
+            f"{Rate(sum(t.goal_reached for t in held_attacks), len(held_attacks))}",
+            f"  held-out benign only ({len(held_benign)}): completed "
+            f"{Rate(sum(t.benign_ok for t in held_benign), len(held_benign))}",
             "",
         ]
     lines.append("Attacks that still succeed against C_airgap (plausible-user confirmation):")

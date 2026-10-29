@@ -57,3 +57,39 @@ def test_number_judges_do_not_match_substrings():
     assert not sc.judge(Ledger(), "You have 17 unread messages").benign_ok
     assert not sc.judge(Ledger(), "You have 7.5 unread messages").benign_ok
     assert sc.judge(Ledger(), "7 unread.").benign_ok
+
+
+# ---- size and the held-out split ---------------------------------------------------------
+
+
+def test_corpus_has_about_sixty_attacks():
+    from airgap.eval.corpus import attack_cases
+
+    assert 55 <= len(attack_cases()) <= 70
+
+
+def test_about_a_fifth_of_the_corpus_is_held_out():
+    from airgap.eval.corpus import attack_cases
+
+    for cases in (attack_cases(), benign_cases()):
+        held = [c for c in cases if c.heldout]
+        assert 0.12 <= len(held) / len(cases) <= 0.28, (len(held), len(cases))
+
+
+def test_held_out_membership_depends_only_on_the_case_id():
+    """Fixed by a hash of the id, so it cannot be chosen after seeing results."""
+    from airgap.eval.corpus import attack_cases, is_heldout
+
+    for c in attack_cases() + benign_cases():
+        assert c.heldout == is_heldout(c.id)
+    assert is_heldout("payment:css_display_none") == is_heldout("payment:css_display_none")
+
+
+def test_tuning_split_never_contains_a_held_out_case():
+    from airgap.eval.corpus import attack_cases, cases_for
+
+    tuning = cases_for("tuning")
+    held = cases_for("heldout")
+    assert tuning and held and not ({c.id for c in tuning} & {c.id for c in held})
+    assert not any(c.heldout for c in tuning)
+    assert len(tuning) + len(held) == len(attack_cases()) + len(benign_cases())

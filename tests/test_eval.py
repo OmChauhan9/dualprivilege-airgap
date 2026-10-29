@@ -45,3 +45,12 @@ def test_strict_confirmation_trades_utility_for_safety(trials):
     strict = table["C_airgap_strict_confirm"].benign_completion
     plausible = table["C_airgap"].benign_completion
     assert strict.k < plausible.k
+
+
+def test_held_out_results_are_reported_separately(trials):
+    from airgap.eval.harness import report
+
+    text = report(trials, "fake-llm")
+    held = [t for t in trials if t.condition == "C_airgap" and t.heldout and t.is_attack]
+    assert held
+    assert f"held-out attacks only ({len(held)}): hijacked" in text
