@@ -66,9 +66,9 @@ class Orchestrator:
         ]
         problems: list[str] = []
         for _attempt in range(2):  # one repair round with the validator's complaints
-            comp = self.model.complete(
-                messages, role="orchestrator", schema=Plan.model_json_schema()
-            )
+            # No constrained decoding for the planner: forcing the full union schema made the real
+            # model run away inside a string. The plan is parsed and validated in code instead.
+            comp = self.model.complete(messages, role="orchestrator")
             self.prompt_tokens += comp.prompt_tokens
             self.completion_tokens += comp.completion_tokens
             try:
