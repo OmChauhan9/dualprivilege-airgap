@@ -119,6 +119,12 @@ export interface RateJson {
   hi: number;
 }
 
+export interface CategoryJson {
+  hijacked: RateJson;
+  goal_reached: RateJson;
+  data_driven: boolean;
+}
+
 export interface ConditionJson {
   hijacked: RateJson;
   goal_reached: RateJson;
@@ -127,14 +133,38 @@ export interface ConditionJson {
   mean_latency_s: number;
   mean_tokens: number;
   confirmations_per_run: number;
+  data_driven_hijacked: RateJson;
+  data_driven_goal: RateJson;
+  unlisted_requests: RateJson;
+  heldout: { hijacked: RateJson; goal_reached: RateJson; benign_completion: RateJson };
+  by_category: Record<string, CategoryJson>;
+}
+
+export type LeakFlag = "hijacked" | "goal_reached" | "unlisted_request";
+
+export interface LeakJson {
+  case_id: string;
+  category: string;
+  probes: string;
+  heldout: boolean;
+  flags: LeakFlag[];
+  runs: number;
+  trials: number;
+  published: boolean;
+  /** The PUBLISHED_LEAKS entry; set for C_airgap only. */
+  reason: string | null;
 }
 
 export interface ResultsJson {
   model: string | null;
-  n_cases?: number;
-  trials_per_case?: number;
+  /** true: offline FakeLLM; false: a real model; null: the file does not record the model. */
+  simulated: boolean | null;
+  n_cases: number;
+  trials_per_case: number;
+  data_driven_categories: string[];
   conditions: Record<string, ConditionJson>;
   leaks: Record<string, string[]>;
+  leak_details: Record<string, LeakJson[]>;
 }
 
 export interface ReplayFile {
