@@ -1,0 +1,83 @@
+"""Privileged orchestrator. It sees only the user's text and typed descriptions, never pages.
+
+The structural guarantee is the signature: `plan()` takes no untrusted input at all.
+"""
+
+from __future__ import annotations
+
+import json
+
+from pydantic import ValidationError
+
+from airgap.core.plan import Plan, validate_plan
+from airgap.core.policy import UserContext
+from airgap.core.schemas import SCHEMAS
+from airgap.models.base import ChatModel
+
+PLAN_SYSTEM = """You are a planner for a tool-using agent. You never see web pages.
+Write a JSON plan that a deterministic interpreter will run.
+
+Steps (field "op"):
+- fetch {out, url}                      fetch a URL the user named
+- read {out, doc, schema_name}          extract typed fields from a fetched document
+- choose_min {out, candidates:[{alias, value}]}   pick the cheapest allowlisted payee
+- pay {payee, amount, memo}   payee is {"alias": name} or {"var": <choose_min>, "field": "alias"}
+- send_email {to, subject, body}        to must be on the user's email allowlist
+- answer {template, args}               final reply; template uses {name} placeholders
+
+Arguments are {"lit": value}, {"var": name, "field": f}, or {"alias": payee_name}.
+Payee addresses and recipients come only from the user's allowlist. Fetch only URLs the user named.
+Pay or email only when the user asked for it. Output only the JSON plan."""
+
+
+class PlanRejected(RuntimeError):
+    pass
+
+
+def _describe_schemas() -> str:
+    return "\n".join(f"- {n}: {', '.join(m.model_fields)}" for n, m in SCHEMAS.items())
+
+
+class Orchestrator:
+    def __init__(self, model: ChatModel) -> None:
+        self.model = model
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+
+    def plan(self, user_text: str, ctx: UserContext) -> Plan:
+        user_msg = (
+            f"User request:\n{user_text}\n\n"
+            f"Payee aliases: {', '.join(ctx.payee_allowlist) or 'none'}\n"
+            f"Email allowlist: {', '.join(sorted(ctx.email_allowlist)) or 'none'}\n"
+            f"Per-transaction limit: {ctx.per_tx_limit_usd:g} USD\n"
+            f"Reader schemas:\n{_describe_schemas()}"
+        )
+        messages = [
+            {"role": "system", "content": PLAN_SYSTEM},
+            {"role": "user", "content": user_msg},
+        ]
+        problems: list[str] = []
+        for _attempt in range(2):  # one repair round with the validator's complaints
+            comp = self.model.complete(
+                messages, role="orchestrator", schema=Plan.model_json_schema()
+            )
+            self.prompt_tokens += comp.prompt_tokens
+            self.completion_tokens += comp.completion_tokens
+            try:
+                data = comp.parsed if comp.parsed is not None else json.loads(comp.text)
+                plan = Plan.model_validate(data)
+            except (ValueError, ValidationError) as exc:
+                problems = [f"plan did not parse: {exc}"]
+            else:
+                problems = validate_plan(plan, ctx)
+                if not problems:
+                    return plan
+            messages = messages + [
+                {"role": "assistant", "content": comp.text},
+                {
+                    "role": "user",
+                    "content": "Fix these problems and output the plan again:\n"
+                    + "\n".join(problems),
+                },
+            ]
+        raise PlanRejected("; ".join(problems))

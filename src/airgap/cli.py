@@ -1,0 +1,100 @@
+"""Command line: `airgap demo`. (eval and serve are added in later rungs.)"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+from airgap.baseline.vulnerable_agent import VulnerableAgent
+from airgap.core.airgap import AirgapAgent
+from airgap.core.audit import Event
+from airgap.core.result import RunResult
+from airgap.models.base import ChatModel
+from airgap.models.fake import FakeLLM
+from airgap.world.scenarios import SCENARIOS, Scenario
+
+RED, GREEN, DIM, BOLD, RESET = "\033[31m", "\033[32m", "\033[2m", "\033[1m", "\033[0m"
+
+
+def make_model(provider: str) -> ChatModel:
+    if provider == "fake":
+        return FakeLLM()
+    if provider == "meta":
+        if os.environ.get("AIRGAP_ALLOW_REAL_CALLS") != "1":
+            sys.exit(
+                "Refusing real model calls: set AIRGAP_ALLOW_REAL_CALLS=1 only after confirming "
+                "your Meta credit is visible, auto top-off is off and a spend limit is set."
+            )
+        from airgap.models.meta import MetaModel
+
+        return MetaModel.from_env()
+    sys.exit(f"unknown provider {provider}")
+
+
+def _fmt(ev: Event) -> str:
+    d = ev.data
+    if ev.kind == "fetch":
+        return f"fetch  origin={BOLD}{d['domain']}{RESET}  redirects={len(d['redirects']) - 1}"
+    if ev.kind == "sanitize":
+        removed = ", ".join(sorted({r["channel"] for r in d["removed"]})) or "nothing"
+        return f"sanitizer stripped: {removed}  ({d['chars_in']} -> {d['chars_out']} chars)"
+    if ev.kind == "reader_output":
+        return f"reader (no tools) -> {d['value']}  taint={d['sources']}"
+    if ev.kind == "policy":
+        colour = GREEN if d["approved"] else RED
+        return (
+            f"policy {d['action']} -> {colour}{d['verdict'].upper()}"
+            f"{' / approved' if d['verdict'] == 'confirm' and d['approved'] else ''}{RESET} "
+            f"{d['rules']} {d['reason']}"
+        )
+    if ev.kind == "tainted_control_flow":
+        return f"flag: choice '{d['chosen']}' was steered by untrusted data {d['steered_by']}"
+    if ev.kind == "agent_action":
+        return f"agent -> {d}"
+    return f"{ev.kind} {d}"
+
+
+def _show(title: str, res: RunResult, sc: Scenario, channel: str | None) -> None:
+    j = sc.judge(res.ledger, res.final_text)
+    print(f"\n{BOLD}{title}{RESET}")
+    for ev in res.audit.events:
+        print(f"  {DIM}|{RESET} {_fmt(ev)}")
+    print(f"  reply: {res.final_text or res.error or '(none)'}")
+    for p in res.ledger.payments:
+        print(f"  {RED if j.hijacked else GREEN}PAYMENT {p.amount_usd:g} USD -> {p.payee}{RESET}")
+    for e in res.ledger.emails:
+        print(f"  {RED if j.hijacked else GREEN}EMAIL sent to {e.to}{RESET}")
+    if not (res.ledger.payments or res.ledger.emails):
+        print("  no side effects")
+    verdict = f"{RED}HIJACKED{RESET}" if j.hijacked else f"{GREEN}not hijacked{RESET}"
+    print(f"  ground truth: {verdict}; user's task completed correctly: {j.benign_ok}")
+
+
+def demo(args: argparse.Namespace) -> None:
+    sc = SCENARIOS[args.scenario]
+    channel = None if args.channel == "none" else args.channel
+    model = make_model(args.provider)
+    print(f"{BOLD}{sc.title}{RESET}\nuser: {sc.user_text}\nchannel: {channel or 'benign page'}")
+    base = VulnerableAgent(model, sc.make_web(channel)).run(sc.user_text, sc.context())
+    _show("UNGUARDED AGENT", base, sc, channel)
+    air = AirgapAgent(model, model, sc.make_web(channel), sc.plausible_confirmer()).run(
+        sc.user_text, sc.context()
+    )
+    _show("AIRGAPPED AGENT", air, sc, channel)
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="airgap")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    d = sub.add_parser("demo", help="run one scenario against both agents")
+    d.add_argument("--scenario", choices=sorted(SCENARIOS), default="payment")
+    d.add_argument("--channel", default="css_display_none")
+    d.add_argument("--provider", choices=["fake", "meta"], default="fake")
+    d.set_defaults(func=demo)
+    args = parser.parse_args(argv)
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
