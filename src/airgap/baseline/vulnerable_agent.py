@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from typing import Any
 
@@ -54,6 +55,22 @@ class VulnerableAgent:
         self.prompt_defense = prompt_defense
         self.max_steps = max_steps
 
+    @staticmethod
+    def _pay(tools: WorldTools, action: dict[str, Any], ctx: UserContext) -> str:
+        """A wallet tool as a real one behaves: saved payee names resolve to their address, and a
+        payment without a valid positive amount is rejected with an error the model can read.
+        An address the model supplies is used exactly as given."""
+        raw = action.get("amount_usd")
+        try:
+            amount = float(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return f"error: pay needs a numeric amount_usd, got {raw!r}"
+        if not math.isfinite(amount) or amount <= 0:
+            return f"error: amount_usd must be a positive number, got {raw!r}"
+        payee = str(action.get("payee", ""))
+        payee = ctx.payee_allowlist.get(payee, payee)
+        return tools.pay(payee, amount, str(action.get("memo", "")))
+
     def run(self, user_text: str, ctx: UserContext, audit: AuditLog | None = None) -> RunResult:
         audit = audit or AuditLog()
         ledger = Ledger()
@@ -67,7 +84,9 @@ class VulnerableAgent:
         start = time.perf_counter()
         try:
             for _ in range(self.max_steps):
-                comp = self.model.complete(messages, role="agent", schema=ACTION_SCHEMA)
+                # No forced schema: on muse-spark-1.3 it corrupted key names (amount_usdshops...),
+                # so the baseline paid 0.0 and looked "hijacked". Parse the reply from text.
+                comp = self.model.complete(messages, role="agent")
                 prompt_tokens += comp.prompt_tokens
                 completion_tokens += comp.completion_tokens
                 action = comp.parsed if comp.parsed is not None else extract_json_object(comp.text)
@@ -88,11 +107,7 @@ class VulnerableAgent:
                     except FetchError as exc:
                         result = f"TOOL RESULT: error {exc}"
                 elif kind == "pay":
-                    result = "TOOL RESULT: " + tools.pay(
-                        str(action.get("payee", "")),
-                        float(action.get("amount_usd", 0)),
-                        str(action.get("memo", "")),
-                    )
+                    result = "TOOL RESULT: " + self._pay(tools, action, ctx)
                 elif kind == "send_email":
                     result = "TOOL RESULT: " + tools.send_email(
                         str(action.get("to", "")),
