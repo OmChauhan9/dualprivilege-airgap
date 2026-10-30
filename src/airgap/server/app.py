@@ -84,6 +84,9 @@ def _load_trials(raw: Any) -> tuple[str | None, bool, list[Trial]]:
     The middle value is True for a partial run saved before it finished."""
     model = None
     incomplete = False
+    if isinstance(raw, dict) and raw.get("kind") == "adaptive":
+        # Adaptive attempts are not corpus trials: they must never be read as an eval.
+        raise ValueError("this is an adaptive-attacker results file, not eval trials")
     if isinstance(raw, dict):
         model = raw.get("model")
         incomplete = raw.get("incomplete") is True
@@ -251,7 +254,10 @@ def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB
     def results() -> dict[str, Any]:
         if not results_path.is_file():
             raise HTTPException(404, f"no saved eval at {results_path}; run `airgap eval` first")
-        return summarize_results(json.loads(results_path.read_text()))
+        try:
+            return summarize_results(json.loads(results_path.read_text()))
+        except ValueError as exc:  # an adaptive-attacker file, or a malformed one
+            raise HTTPException(422, f"{results_path} is not an eval results file: {exc}") from exc
 
     @app.get("/{path:path}", include_in_schema=False)
     def ui(path: str) -> Any:

@@ -10,7 +10,7 @@ class RealCallsDisabled(RuntimeError):
     """Raised when a real model is requested without AIRGAP_ALLOW_REAL_CALLS=1."""
 
 
-Role = Literal["agent", "orchestrator", "reader"]
+Role = Literal["agent", "orchestrator", "reader", "attacker"]
 Message = dict[str, str]
 
 

@@ -24,5 +24,6 @@ The words this project uses, and what they mean here. Code, docs and issues shou
 | **Goal reached** | The attacker's specific goal was achieved (for example, their wallet was paid). Reported separately from hijacked. |
 | **Benign completion** | The user's legitimate task finished correctly with no extra side effects. |
 | **Utility under attack** | Benign completion measured on attacked pages. |
+| **Adaptive attempt** | One round of the adaptive attacker (`airgap adaptive`): page content an attacker model wrote after seeing its earlier outcomes, scored by the same ledger judges. Never a corpus case, never held out. |
 | **Channel** | The place an injection hides: `css_display_none`, `json_ld`, `visible_text`, and so on. |
 | **FakeLLM** | Offline deterministic simulation of a gullible model. Tests plumbing only; never evidence about real models. |
