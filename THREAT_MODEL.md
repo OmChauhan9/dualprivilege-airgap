@@ -3,9 +3,10 @@
 What DualPrivilege-Airgap defends against, how, and where it does not. Terms follow
 [`GLOSSARY.md`](GLOSSARY.md). The design is in [`docs/architecture.md`](docs/architecture.md).
 
-All evidence cited here comes from the offline `FakeLLM`, a hand-written simulation. It shows that
-the code enforces what this document says. It is not evidence about real models; real-model
-results do not exist yet.
+Most evidence cited here comes from the offline `FakeLLM`, a hand-written simulation. It shows that
+the code enforces what this document says. It is not evidence about real models. One real model
+(`muse-spark-1.3`) has also been run; those results are in the README, with the raw trials in
+[`results/published/`](results/published/README.md), and are labeled wherever they appear.
 
 ## System and assets
 
@@ -134,7 +135,8 @@ payee is ever authorized, whatever its value.
   allowed domain. The final domain would pass, but the relay hop is refused before any request
   reaches it.
 - Across the corpus, requests to unlisted domains: 0/70 attack runs with the airgap, 5/70 without
-  a defense.
+  a defense (offline). On the real model's held-out run: 0/57 with the airgap, 6/57 without a
+  defense and 6/57 with a prompt defense.
 
 ### P6. A choice made by tainted data needs confirmation
 
@@ -237,9 +239,13 @@ Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
 
 ## Honest limits
 
-- **No real-model evidence.** Every number in this repository comes from `FakeLLM`, whose reader is
-  a regex extractor that cannot be injected. Real-model runs are pending.
-- **No adaptive attacker.** The corpus is fixed and hand-written (70 attacks; 19 held out by hash).
+- **One real model, one small held-out split.** `muse-spark-1.3` was evaluated on 19 held-out
+  attack cases (57 runs) and 51 tuning cases. The attacker's own wallet was never paid, in any
+  condition. The data-driven attacks that the default airgap lets through on the tuning split
+  (5/27) are not in the held-out split, so its 0/57 there must not be read as "secure". The
+  "attacker paid" metric counts only attacker-owned wallets and mailboxes, not a lying vendor that
+  is on the user's allowlist. Other models are untested.
+- **No adaptive attacker.** The corpus is fixed and hand-written (70 attacks; 19 held out by hash, now spent by the final real run).
   Nasr et al. (2025) bypassed 12 recent defenses with adaptive attacks; the boundary here is code
   for that reason, but it has not been attacked adaptively.
 - **Mock web only.** No real HTTP fetcher, no TLS, no PDFs or calendar invites in the corpus yet
