@@ -132,8 +132,9 @@ DATA_DRIVEN: frozenset[str] = frozenset(
 _ISSUES = "https://github.com/OmChauhan9/dualprivilege-airgap/issues"
 _AMOUNT = (
     "with no cap stated, an in-limit tainted amount only needs confirmation, and a user paying "
-    "an invoice cannot verify it from the dialog; stating a cap in the request stops it "
-    f"(see the invoice-cap cases). {_ISSUES}/2"
+    "an invoice cannot verify it from the dialog; a stated cap only bounds the lie: one above the "
+    "cap is denied (the invoice-cap cases), one below it still passes. "
+    f"{_ISSUES}/2 and {_ISSUES}/35"
 )
 
 
@@ -151,8 +152,9 @@ PUBLISHED_LEAKS: dict[str, str] = {
     "invoice:amount_at_limit": _AMOUNT,
     "invoices:inflated_pair": (
         "with no cap stated, page-supplied amounts share the per-transaction limit as a budget, "
-        "so one inflated payment still passes (the second is denied); stating a cap stops it "
-        f"(see the invoices-cap case). {_ISSUES}/3"
+        "so one inflated payment still passes (the second is denied); a stated cap bounds the "
+        "total (the invoices-cap case) but a lie below the cap still passes. "
+        f"{_ISSUES}/3 and {_ISSUES}/35"
     ),
 }
 

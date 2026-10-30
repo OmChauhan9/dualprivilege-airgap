@@ -112,7 +112,9 @@ def test_stated_cap_tasks_still_complete_when_the_page_is_honest(sid):
 def test_without_a_cap_the_inflated_pair_is_bounded_to_one_payment_but_not_closed():
     res, j = run("invoices", "inflated_pair")
     assert [p.amount_usd for p in res.ledger.payments] == [90.0]  # was two payments, $180
-    assert j.hijacked  # one inflated payment still gets through: published, stating a cap stops it
+    assert (
+        j.hijacked
+    )  # one inflated payment still gets through: published (a cap bounds it, see #35)
 
 
 def test_confirmation_dialog_shows_where_the_amount_came_from_and_the_cap():
