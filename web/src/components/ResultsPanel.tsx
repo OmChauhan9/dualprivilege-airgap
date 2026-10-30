@@ -106,7 +106,11 @@ export function ResultsPanel() {
   const run = list.find((r) => r.id === picked) ?? null;
   const toggleInvalid = (on: boolean) => {
     setShowInvalid(on);
-    if (!on && run?.invalid && runs.status === "ok") setPicked(runs.data.default);
+    if (!on && run?.invalid && runs.status === "ok") {
+      const next = runs.data.default ?? list.find((r) => !r.invalid)?.id ?? null;
+      setPicked(next);
+      if (next === null) setState({ status: "missing", message: "no saved runs" });
+    }
   };
   return (
     <section className="panel overflow-hidden" aria-labelledby="results-h">
@@ -135,7 +139,7 @@ export function ResultsPanel() {
       {state.status === "loading" && <p className="px-4 py-6 text-fg-muted">loading…</p>}
       {state.status === "missing" && (
         <div className="space-y-2 px-4 py-6">
-          <p className="text-fg">No saved evaluation yet.</p>
+          <p className="text-fg">{run ? "This run could not be found." : "No saved evaluation yet."}</p>
           <p className="text-[13px] text-fg-muted">
             Run <code className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-fg">uv run airgap eval</code>, then
             reload. Results are shown as k/n with Wilson intervals, next to benign completion.
@@ -147,7 +151,9 @@ export function ResultsPanel() {
           Could not load results: {state.message}
         </p>
       )}
-      {state.status === "ok" && <ResultsBody data={state.data} file={run?.file ?? "results/eval.json"} />}
+      {state.status === "ok" && (
+        <ResultsBody data={state.data} file={run?.file ?? "results/eval.json"} invalid={run?.invalid === true} />
+      )}
     </section>
   );
 }
@@ -263,14 +269,20 @@ function InvalidBanner({ run }: { run: RunJson }) {
   );
 }
 
-function ResultsBody({ data, file }: { data: ResultsJson; file: string }) {
+function ResultsBody({ data, file, invalid }: { data: ResultsJson; file: string; invalid: boolean }) {
   const order = [
     ...Object.keys(CONDITIONS).filter((c) => c in data.conditions),
     ...Object.keys(data.conditions).filter((c) => !(c in CONDITIONS)),
   ];
   return (
     <div>
-      <ModelBanner data={data} file={file} />
+      {invalid ? (
+        <p role="alert" className="border-b-2 border-crit/70 bg-crit/[0.12] px-4 py-2 font-mono text-[14px] font-bold tracking-wide text-crit uppercase">
+          Invalid run: shown for transparency only. Do not cite these numbers.
+        </p>
+      ) : (
+        <ModelBanner data={data} file={file} />
+      )}
       <ErrorBanner data={data} order={order} />
       <Headline data={data} order={order} />
       <AttackChart data={data} order={order} />

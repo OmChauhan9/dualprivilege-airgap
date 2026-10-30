@@ -115,8 +115,10 @@ def _result_runs(results_path: Path, published_dir: Path) -> dict[str, tuple[Pat
         runs["eval"] = (results_path, False)
     for f in _json_files(published_dir):
         runs[f"published:{f.stem}"] = (f, False)
-    for f in _json_files(published_dir / "invalid"):
-        runs[f"invalid:{f.stem}"] = (f, True)
+    invalid_dir = published_dir / "invalid"
+    if not invalid_dir.is_symlink():  # a linked folder could point outside the results tree
+        for f in _json_files(invalid_dir):
+            runs[f"invalid:{f.stem}"] = (f, True)
     known = list(RUN_LABELS)
     rank = {run_id: (known.index(run_id) if run_id in known else len(known)) for run_id in runs}
     return dict(sorted(runs.items(), key=lambda kv: rank[kv[0]]))
@@ -137,18 +139,22 @@ def _run_info(run_id: str, path: Path, invalid: bool) -> dict[str, Any]:
         "error": None,
     }
     try:
-        model, incomplete, trials = _load_trials(json.loads(path.read_text()))
-    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        raw = json.loads(path.read_text())
+        model, incomplete, trials = _load_trials(raw)
+        summarize_results(
+            raw
+        )  # the same check `?run=` will make, so a listed run is a readable run
+        info.update(
+            model=model,
+            simulated=_simulated(model),
+            n_cases=len({t.case_id for t in trials}),
+            trials_per_case=_trials_per_case(trials),
+            incomplete=incomplete,
+        )
+    except Exception as exc:  # noqa: BLE001 - one bad file must never fail the whole list
         # A broken file stays visible in the list, flagged, instead of hiding or failing the rest.
         info["error"] = f"could not read {path.name}: {type(exc).__name__}"
-        return info
-    info.update(
-        model=model,
-        simulated=_simulated(model),
-        n_cases=len({t.case_id for t in trials}),
-        trials_per_case=_trials_per_case(trials),
-        incomplete=incomplete,
-    )
+        info.update(model=None, simulated=None, n_cases=0, trials_per_case=0, incomplete=False)
     return info
 
 
@@ -361,7 +367,10 @@ def create_app(
         found = _result_runs(results_path, published_dir).get(run)
         if found is None:
             raise HTTPException(404, "unknown run; see GET /api/results/runs")
-        return summarize_results(json.loads(found[0].read_text()))
+        try:
+            return summarize_results(json.loads(found[0].read_text()))
+        except Exception as exc:  # noqa: BLE001 - a corrupt file is a clean error, not a 500
+            raise HTTPException(422, f"run {run} could not be read: {type(exc).__name__}") from None
 
     @app.get("/{path:path}", include_in_schema=False)
     def ui(path: str) -> Any:
