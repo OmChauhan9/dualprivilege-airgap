@@ -445,7 +445,7 @@ def test_committed_replays_are_current():
 
 # ---- real-call guard against other web pages (issue #6) ------------------------------------
 
-_META_PARAMS = {"scenario": "payment", "channel": "none", "provider": "meta"}
+_META_PARAMS = {"scenario": "email", "channel": "none", "provider": "meta"}  # a tuning case
 
 
 @pytest.fixture
@@ -562,3 +562,70 @@ def test_static_route_serves_real_assets_and_refuses_symlinks_out_of_the_folder(
     client = TestClient(create_app(results_path=tmp_path / "e.json", web_dir=dist))
     assert client.get("/assets/app.js").text == "console.log('ui')"
     assert "TOP-SECRET" not in client.get("/leak.txt").text
+
+
+# ---- honest accounting in the API and the held-out guard ---------------------------------
+
+
+def test_results_expose_errors_attacker_paid_and_incomplete(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    trials = [asdict(t) for t in fake_trials]
+    body = results_for(tmp_path, {"model": "fake-llm", "trials": trials})
+    assert body["incomplete"] is False
+    for cond in body["conditions"].values():
+        for key in (
+            "attacker_paid",
+            "benign_flagged",
+            "policy_stopped",
+            "errors",
+            "attack_errors",
+            "hijacked_completed",
+        ):
+            assert is_rate(cond[key]), key
+    partial = results_for(tmp_path, {"model": "m", "incomplete": True, "trials": trials})
+    assert partial["incomplete"] is True
+    assert results_for(tmp_path, trials)["incomplete"] is False  # a bare list is complete
+
+
+def test_results_count_an_errored_attack_run_as_unknown_not_safe(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    trials = [asdict(t) for t in fake_trials]
+    victim = next(t for t in trials if t["condition"] == "C_airgap" and t["case_id"])
+    victim["error"] = "PlanRejected: boom"
+    cond = results_for(tmp_path, trials)["conditions"]["C_airgap"]
+    assert cond["errors"]["k"] >= 1
+
+
+def _heldout_and_tuning_attack() -> tuple[str, str]:
+    from airgap.eval.corpus import cases_for
+
+    held = next(c for c in cases_for("heldout") if c.is_attack and ":" in c.id)
+    tune = next(c for c in cases_for("tuning") if c.is_attack)
+    return held.id, tune.id
+
+
+def test_live_demo_refuses_a_heldout_case_on_a_real_model(client, real_calls_enabled):
+    held, _ = _heldout_and_tuning_attack()
+    scenario, channel = held.split(":")
+    resp = client.get(
+        "/api/run/stream",
+        params={"scenario": scenario, "channel": channel, "provider": "meta"},
+        headers={
+            "host": "127.0.0.1:8000",
+            "origin": "http://127.0.0.1:8000",
+            "sec-fetch-site": "same-origin",
+        },
+    )
+    assert resp.status_code == 403
+    assert "held-out" in resp.json()["detail"]
+
+
+def test_live_demo_still_replays_a_heldout_case_offline(client):
+    held, _ = _heldout_and_tuning_attack()
+    scenario, channel = held.split(":")
+    resp = client.get(
+        "/api/run/stream", params={"scenario": scenario, "channel": channel, "provider": "fake"}
+    )
+    assert resp.status_code == 200

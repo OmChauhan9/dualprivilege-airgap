@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
-from airgap.eval.corpus import DATA_DRIVEN, PUBLISHED_LEAKS, attack_cases
+from airgap.eval.corpus import DATA_DRIVEN, PUBLISHED_LEAKS, attack_cases, is_heldout
 from airgap.eval.harness import Trial, by_category, failures, summarize
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel, RealCallsDisabled
@@ -78,14 +78,18 @@ def _rate(r: Rate) -> dict[str, float | int]:
     return {"k": r.k, "n": r.n, "lo": lo, "hi": hi}
 
 
-def _load_trials(raw: Any) -> tuple[str | None, list[Trial]]:
-    """Accept a bare trial list (eval.harness.save) or {"model": ..., "trials": [...]}."""
+def _load_trials(raw: Any) -> tuple[str | None, bool, list[Trial]]:
+    """Accept a bare trial list (eval.harness.save) or {"model": ..., "trials": [...]}.
+
+    The middle value is True for a partial run saved before it finished."""
     model = None
+    incomplete = False
     if isinstance(raw, dict):
         model = raw.get("model")
+        incomplete = raw.get("incomplete") is True
         raw = raw.get("trials", [])
     names = {f.name for f in fields(Trial)}
-    return model, [Trial(**{k: v for k, v in row.items() if k in names}) for row in raw]
+    return model, incomplete, [Trial(**{k: v for k, v in row.items() if k in names}) for row in raw]
 
 
 def _subset(rows: list[Trial]) -> dict[str, dict[str, float | int]]:
@@ -134,10 +138,11 @@ def _leak_details(trials: list[Trial], condition: str) -> list[dict[str, Any]]:
 
 
 def summarize_results(raw: Any) -> dict[str, Any]:
-    model, trials = _load_trials(raw)
+    model, incomplete, trials = _load_trials(raw)
     table = summarize(trials)
     return {
         "model": model,
+        "incomplete": incomplete,
         # Same test as the CLI report: FakeLLM names start with "fake". Unknown when unrecorded.
         "simulated": None if model is None else model.startswith("fake"),
         "n_cases": len({t.case_id for t in trials}),
@@ -155,6 +160,13 @@ def summarize_results(raw: Any) -> dict[str, Any]:
                 "data_driven_hijacked": _rate(s.data_driven_hijacked),
                 "data_driven_goal": _rate(s.data_driven_goal),
                 "unlisted_requests": _rate(s.unlisted_requests),
+                # Honest-accounting rows: an errored run is unknown, never safe.
+                "attacker_paid": _rate(s.attacker_paid),
+                "benign_flagged": _rate(s.benign_flagged),
+                "policy_stopped": _rate(s.policy_stopped),
+                "errors": _rate(s.errors),
+                "attack_errors": _rate(s.attack_errors),
+                "hijacked_completed": _rate(s.hijacked_completed),
                 "heldout": _subset([t for t in trials if t.condition == cond and t.heldout]),
                 "by_category": {
                     cat: {
@@ -202,6 +214,14 @@ def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB
         if channel != "none" and channel not in sc.channels:
             raise HTTPException(400, f"channel {channel} is not defined for scenario {scenario}")
         model = _make_model(provider)  # refuses first unless real calls are enabled
+        case_id = f"{scenario}:{channel if channel != 'none' else 'benign'}"
+        if provider != "fake" and is_heldout(case_id):
+            # Same rule as `airgap demo`: held-out cases stay unseen until the final evaluation.
+            raise HTTPException(
+                403,
+                f"{case_id} is a held-out case and must stay unseen until the final evaluation; "
+                "pick another scenario or channel",
+            )
         if provider != "fake":
             _require_local_same_origin(request)
         loop = asyncio.get_running_loop()

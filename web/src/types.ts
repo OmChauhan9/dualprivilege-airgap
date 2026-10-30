@@ -136,6 +136,12 @@ export interface ConditionJson {
   data_driven_hijacked: RateJson;
   data_driven_goal: RateJson;
   unlisted_requests: RateJson;
+  attacker_paid: RateJson;
+  benign_flagged: RateJson;
+  policy_stopped: RateJson;
+  errors: RateJson;
+  attack_errors: RateJson;
+  hijacked_completed: RateJson;
   heldout: { hijacked: RateJson; goal_reached: RateJson; benign_completion: RateJson };
   by_category: Record<string, CategoryJson>;
 }
@@ -157,6 +163,8 @@ export interface LeakJson {
 
 export interface ResultsJson {
   model: string | null;
+  /** true when a run stopped before every case finished: the numbers cover part of the suite. */
+  incomplete: boolean;
   /** true: offline FakeLLM; false: a real model; null: the file does not record the model. */
   simulated: boolean | null;
   n_cases: number;
