@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import string
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from airgap.core.fetcher import domain_of_url
 from airgap.core.policy import UserContext
@@ -30,6 +30,21 @@ class Alias(_S):
 
 
 Arg = Lit | Var | Alias
+
+
+def _unwrap_lit(value: Any) -> Any:
+    """The planner often writes a text field as {"lit": "..."}, like every other argument.
+
+    Accept exactly that shape and nothing else, so a variable reference (which could carry page
+    data) is still rejected for these fields.
+    """
+    if isinstance(value, dict) and set(value) == {"lit"} and isinstance(value["lit"], str):
+        return value["lit"]
+    return value
+
+
+# Planner-written text (memo, email subject and body): always a plain string in the plan.
+PlanText = Annotated[str, BeforeValidator(_unwrap_lit)]
 
 
 class Fetch(_S):
@@ -60,14 +75,14 @@ class Pay(_S):
     op: Literal["pay"]
     payee: Arg
     amount: Arg
-    memo: str = ""
+    memo: PlanText = ""
 
 
 class SendEmail(_S):
     op: Literal["send_email"]
     to: Arg
-    subject: str
-    body: str
+    subject: PlanText
+    body: PlanText
 
 
 class Answer(_S):
