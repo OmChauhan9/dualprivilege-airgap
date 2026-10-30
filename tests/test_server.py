@@ -629,3 +629,245 @@ def test_live_demo_still_replays_a_heldout_case_offline(client):
         "/api/run/stream", params={"scenario": scenario, "channel": channel, "provider": "fake"}
     )
     assert resp.status_code == 200
+
+
+# ---- /api/results/runs and ?run= ---------------------------------------------------------
+
+
+@pytest.fixture
+def runs_dir(tmp_path: Path, fake_trials) -> tuple[Path, Path]:
+    """A results folder laid out like results/: eval.json plus published/ and published/invalid/."""
+    from dataclasses import asdict
+
+    rows = [asdict(t) for t in fake_trials]
+    attack = next(r for r in rows if r["is_attack"])
+    eval_path = tmp_path / "eval.json"
+    eval_path.write_text(json.dumps(rows))
+    published = tmp_path / "published"
+    (published / "invalid").mkdir(parents=True)
+    (published / "final_heldout.json").write_text(
+        json.dumps({"model": "muse-spark-1.3", "trials": [attack, {**attack, "trial": 1}]})
+    )
+    (published / "offline_fakellm.json").write_text(
+        json.dumps({"model": "fake-llm", "trials": rows})
+    )
+    (published / "brand_new_run.json").write_text(
+        json.dumps({"model": "m", "incomplete": True, "trials": [attack]})
+    )
+    (published / "invalid" / "first_run_INVALID.json").write_text(
+        json.dumps({"model": "muse-spark-1.3", "trials": [attack]})
+    )
+    (published / "README.md").write_text("not a run")
+    return eval_path, published
+
+
+def runs_client(paths: tuple[Path, Path]) -> TestClient:
+    eval_path, published = paths
+    return TestClient(
+        create_app(
+            results_path=eval_path, web_dir=eval_path.parent / "dist", published_dir=published
+        )
+    )
+
+
+def test_runs_lists_local_eval_published_and_invalid_runs(runs_dir):
+    body = runs_client(runs_dir).get("/api/results/runs").json()
+    runs = {r["id"]: r for r in body["runs"]}
+    assert set(runs) == {
+        "eval",
+        "published:brand_new_run",
+        "published:final_heldout",
+        "published:offline_fakellm",
+        "invalid:first_run_INVALID",
+    }
+    assert body["default"] == "published:final_heldout"
+    # Runs named in RUN_LABELS in that order, then files the table does not know.
+    assert [r["id"] for r in body["runs"]] == [
+        "eval",
+        "published:final_heldout",
+        "published:offline_fakellm",
+        "invalid:first_run_INVALID",
+        "published:brand_new_run",
+    ]
+
+    final = runs["published:final_heldout"]
+    assert final["label"] == "Final evaluation, held-out split"
+    assert final["model"] == "muse-spark-1.3" and final["simulated"] is False
+    assert (final["n_cases"], final["trials_per_case"]) == (1, 2)
+    assert final["invalid"] is False and final["reason"] is None and final["error"] is None
+
+    offline = runs["published:offline_fakellm"]
+    assert offline["simulated"] is True and offline["trials_per_case"] == 1
+
+    local = runs["eval"]
+    assert local["model"] is None and local["simulated"] is None
+    assert local["n_cases"] == len(attack_cases()) + len(benign_cases())
+
+    # Unknown file names fall back to the file name, never to anything taken from the request.
+    new = runs["published:brand_new_run"]
+    assert new["label"] == "brand_new_run.json" and new["incomplete"] is True
+
+    bad = runs["invalid:first_run_INVALID"]
+    assert bad["invalid"] is True
+    assert "JSON-schema decoding" in bad["reason"]
+
+
+def test_runs_default_falls_back_to_the_local_eval_then_to_any_valid_run(runs_dir):
+    eval_path, published = runs_dir
+    (published / "final_heldout.json").unlink()
+    assert runs_client(runs_dir).get("/api/results/runs").json()["default"] == "eval"
+    eval_path.unlink()
+    body = runs_client(runs_dir).get("/api/results/runs").json()
+    assert body["default"] in {"published:brand_new_run", "published:offline_fakellm"}
+
+
+def test_runs_is_empty_when_nothing_is_saved(tmp_path):
+    client = TestClient(
+        create_app(
+            results_path=tmp_path / "eval.json",
+            web_dir=tmp_path / "dist",
+            published_dir=tmp_path / "published",
+        )
+    )
+    assert client.get("/api/results/runs").json() == {"default": None, "runs": []}
+
+
+def test_runs_flags_an_unreadable_file_instead_of_failing(runs_dir):
+    _, published = runs_dir
+    (published / "broken.json").write_text("{not json")
+    body = runs_client(runs_dir).get("/api/results/runs").json()
+    broken = next(r for r in body["runs"] if r["id"] == "published:broken")
+    assert broken["error"] and broken["n_cases"] == 0
+    assert body["default"] == "published:final_heldout"
+
+
+def test_results_for_a_run_matches_summarizing_that_file(runs_dir):
+    from airgap.server.app import summarize_results
+
+    _, published = runs_dir
+    client = runs_client(runs_dir)
+    for run_id, path in [
+        ("published:final_heldout", published / "final_heldout.json"),
+        ("invalid:first_run_INVALID", published / "invalid" / "first_run_INVALID.json"),
+    ]:
+        resp = client.get("/api/results", params={"run": run_id})
+        assert resp.status_code == 200
+        assert resp.json() == summarize_results(json.loads(path.read_text()))
+    final = client.get("/api/results", params={"run": "published:final_heldout"}).json()
+    assert final["model"] == "muse-spark-1.3" and final["simulated"] is False
+
+
+def test_results_without_run_still_reads_the_local_eval(runs_dir):
+    client = runs_client(runs_dir)
+    assert client.get("/api/results").json() == client.get("/api/results?run=eval").json()
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "nope",
+        "final_heldout",  # the bare file stem is not an id
+        "published:missing",
+        "published:README",
+        "../../etc/passwd",
+        "..%2f..%2fetc%2fpasswd",
+        "%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+        "/etc/passwd",
+        "published:../eval",
+        "published:../../../etc/passwd",
+        "invalid:../final_heldout",
+        "",
+    ],
+)
+def test_results_for_an_unknown_run_is_404(runs_dir, run):
+    resp = runs_client(runs_dir).get("/api/results", params={"run": run})
+    assert resp.status_code == 404
+    assert "root:" not in resp.text
+
+
+def test_results_run_value_never_reaches_the_filesystem(runs_dir, monkeypatch):
+    """CodeQL py/path-injection: the run id is a map key, never part of a path that gets probed."""
+    probed: list[Path] = []
+    for name in ("is_file", "read_text", "exists"):
+        real = getattr(Path, name)
+
+        def spy(self, *a, _real=real, **kw):
+            probed.append(self)
+            return _real(self, *a, **kw)
+
+        monkeypatch.setattr(Path, name, spy)
+    client = runs_client(runs_dir)
+    for run in ("../../etc/passwd", "published:../../etc/passwd", "..%2f..%2fetc%2fpasswd"):
+        assert client.get("/api/results", params={"run": run}).status_code == 404
+    assert [p for p in probed if "etc" in p.parts or ".." in p.parts] == []
+
+
+def test_runs_skip_symlinked_files(runs_dir, tmp_path):
+    _, published = runs_dir
+    outside = tmp_path / "elsewhere.json"
+    outside.write_text(json.dumps({"model": "x", "trials": []}))
+    (published / "linked.json").symlink_to(outside)
+    ids = {r["id"] for r in runs_client(runs_dir).get("/api/results/runs").json()["runs"]}
+    assert "published:linked" not in ids
+
+
+# ---- verifier round: one bad file must not break the list; no escape through a linked folder ----
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"model": 5, "trials": []},  # model is not a string
+        [{"case_id": "x", "condition": "A", "trial": "0"}],  # wrong field types
+        {"model": "m", "trials": [{"hijacked": None}]},
+    ],
+)
+def test_a_malformed_run_is_flagged_not_a_500_for_the_whole_list(runs_dir, bad):
+    eval_path, published = runs_dir
+    (published / "broken.json").write_text(json.dumps(bad))
+    client = TestClient(
+        create_app(
+            results_path=eval_path, web_dir=eval_path.parent / "dist", published_dir=published
+        )
+    )
+    resp = client.get("/api/results/runs")
+    assert resp.status_code == 200
+    runs = {r["id"]: r for r in resp.json()["runs"]}
+    assert runs["published:broken"]["error"]
+    assert runs["published:final_heldout"]["error"] is None
+    assert resp.json()["default"] == "published:final_heldout"
+    # Asking for the broken run directly is a clean 422, not a 500.
+    assert client.get("/api/results", params={"run": "published:broken"}).status_code == 422
+
+
+def test_a_corrupt_json_file_is_a_clean_422(runs_dir):
+    eval_path, published = runs_dir
+    (published / "corrupt.json").write_text("{not json")
+    client = TestClient(
+        create_app(
+            results_path=eval_path, web_dir=eval_path.parent / "dist", published_dir=published
+        )
+    )
+    assert client.get("/api/results", params={"run": "published:corrupt"}).status_code == 422
+
+
+def test_a_symlinked_invalid_folder_is_not_scanned(tmp_path, runs_dir):
+    eval_path, published = runs_dir
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.json").write_text(json.dumps([]))
+    import shutil
+
+    shutil.rmtree(published / "invalid")
+    try:
+        (published / "invalid").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are not available here")
+    client = TestClient(
+        create_app(
+            results_path=eval_path, web_dir=eval_path.parent / "dist", published_dir=published
+        )
+    )
+    ids = {r["id"] for r in client.get("/api/results/runs").json()["runs"]}
+    assert not any(i.startswith("invalid:") for i in ids)
+    assert client.get("/api/results", params={"run": "invalid:secret"}).status_code == 404
