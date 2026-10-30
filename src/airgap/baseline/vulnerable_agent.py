@@ -13,6 +13,7 @@ from airgap.core.fetcher import Fetcher, FetchError
 from airgap.core.policy import UserContext
 from airgap.core.result import RunResult
 from airgap.models.base import ChatModel
+from airgap.models.budget import BudgetExceeded
 from airgap.models.jsonutil import extract_json_object
 from airgap.world.ledger import Ledger
 from airgap.world.mock_web import MockWeb
@@ -129,6 +130,11 @@ class VulnerableAgent:
             else:
                 error = f"step limit ({self.max_steps}) reached without finishing"
                 audit.emit("error", error=error)
+        except BudgetExceeded:
+            raise  # the spend cap is infrastructure, never a 'safe' outcome
+        except Exception as exc:  # noqa: BLE001 - keep side effects that already happened
+            error = f"{type(exc).__name__}: {exc}"
+            audit.emit("error", error=error)
         finally:
             client.close()
         return RunResult(

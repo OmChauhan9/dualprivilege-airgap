@@ -19,6 +19,11 @@ class ReaderError(RuntimeError):
     """Reader output failed validation. The pipeline fails closed."""
 
 
+class ReaderNoOutput(ReaderError):
+    """The reader returned nothing usable (no JSON at all). That is an outage or a truncated
+    reply, not the validator rejecting a value, so it must never count as a safe stop."""
+
+
 class Reader:
     def __init__(self, model: ChatModel) -> None:
         self.model = model
@@ -35,10 +40,10 @@ class Reader:
         comp = self.model.complete(messages, role="reader", schema=json_schema_for(schema_name))
         self.prompt_tokens += comp.prompt_tokens
         self.completion_tokens += comp.completion_tokens
+        data = comp.parsed if comp.parsed is not None else extract_json_object(comp.text)
+        if data is None:
+            raise ReaderNoOutput("reader reply contained no JSON object")
         try:
-            data = comp.parsed if comp.parsed is not None else extract_json_object(comp.text)
-            if data is None:
-                raise ValueError("reader reply contained no JSON object")
             obj: BaseModel = SCHEMAS[schema_name].model_validate(data)
         except (ValueError, ValidationError) as exc:
             raise ReaderError(f"invalid reader output for {schema_name}: {exc}") from exc

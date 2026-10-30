@@ -116,10 +116,11 @@ class Interpreter:
                 result.error = f"{type(exc).__name__}: {exc}"
                 self.audit.emit("error", error=result.error)
                 break
-        if result.denied and result.answer is not None:
-            # The reply was drafted before anything ran; it may describe actions policy denied.
+        stopped = [*result.denied, *(["the run stopped on an error"] if result.error else [])]
+        if stopped and result.answer is not None:
+            # The reply was drafted before anything ran; it may describe things that never happened.
             result.answer = (
-                "Not completed as planned: " + "; ".join(result.denied) + ". Some actions did "
+                "Not completed as planned: " + "; ".join(stopped) + ". Some actions did "
                 "not run, so the drafted reply was withheld because it may describe things that "
                 "did not happen."
             )
