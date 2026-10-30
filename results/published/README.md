@@ -21,8 +21,8 @@ errors, tokens, latency). Re-render a file in the console with
 | `invalid/first_run_INVALID.*` | **Invalid, kept so it is not hidden.** The first real run forced JSON-schema decoding, which corrupted key names and made the unguarded agent look hijacked when it had only mis-parsed. Replaced by `real_A_tuning`. | tuning | before `eaa36a7` |
 
 Commits for the tuning runs are inferred from file times and the merge log, so treat them as
-approximate. Only `final_heldout.log` records its commit (`cf4ac2f`, taken by the wrapper at the end
-of the run). `offline_fakellm.json` was regenerated with the current code on Oct 30 (the original
+approximate. Only `final_heldout.log` (`cf4ac2f`) and `adaptive_real.log` (`0639618`) record their commit,
+taken by the wrapper at the end of the run. `offline_fakellm.json` was regenerated with the current code on Oct 30 (the original
 file came from older code and included a prompt-defense condition the offline model does not
 simulate).
 
