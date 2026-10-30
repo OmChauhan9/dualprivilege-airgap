@@ -32,6 +32,11 @@ The git history is the record (`git log`). Merged pull requests:
 | [#25](https://github.com/OmChauhan9/dualprivilege-airgap/pull/25) | fix(plan): accept {"lit": ...} for memo, subject and body |
 | [#26](https://github.com/OmChauhan9/dualprivilege-airgap/pull/26) | feat(server): expose errors, attacker-paid and incomplete runs; guard held-out cases in the live demo |
 | [#27](https://github.com/OmChauhan9/dualprivilege-airgap/pull/27) | fix(eval): an empty reader reply is an error; keep side effects when a later call fails |
+| [#28](https://github.com/OmChauhan9/dualprivilege-airgap/pull/28) | docs: publish the real-model results; refresh README, threat model and provenance |
+| [#33](https://github.com/OmChauhan9/dualprivilege-airgap/pull/33) | feat(console): run picker for saved results and an interval chart |
+| [#34](https://github.com/OmChauhan9/dualprivilege-airgap/pull/34) | feat(eval): adaptive attacker evaluation (rung 3) |
+| [#36](https://github.com/OmChauhan9/dualprivilege-airgap/pull/36) | docs: correct the claim that a stated cap stops the invoice leaks |
+| [#37](https://github.com/OmChauhan9/dualprivilege-airgap/pull/37) | docs: publish the real adaptive-attacker run |
 
 The core pipeline (mock world, unguarded baseline, airgap, policy engine) and the first evaluation
 harness were the first two commits on `main`, before the PR workflow started.
@@ -61,12 +66,13 @@ These ideas come from the work cited below. We use them; we did not invent them.
   license fee, and a lookalike billing portal that names its own wallet. Both run on fictional
   `.test` hosts.
 - **Built for Meta's Model API.** The client (`src/airgap/models/meta.py`) targets `muse-spark-1.3`
-  in Standard mode. **Real-model runs have not happened yet**; all current numbers come from the
-  offline `FakeLLM` simulation.
+  in Standard mode. **Real-model runs are done and published** in `results/published/`: the final
+  held-out run, the tuning runs, and one small adaptive-attacker run, all on `muse-spark-1.3`. The
+  offline `FakeLLM` numbers are a plumbing check, not evidence about real models.
 - **A live trace.** Every plan, fetch, sanitizer removal, reader output, taint flag and policy
   decision streams to a side-by-side console.
 - **Published leaks.** Every attack that gets through is listed with its reason and a tracking
-  issue, and a test fails if the list drifts from the results.
+  issue or decision record, and a test fails if the list drifts from the results.
 
 ## Prior art
 
