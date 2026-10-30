@@ -83,6 +83,10 @@ class Plan(_S):
     steps: list[Step] = Field(max_length=20)
 
 
+# What the interpreter exposes on a choose_min result (see Interpreter.resolve).
+CHOICE_FIELDS = frozenset({"alias", "price"})
+
+
 def _placeholders(template: str) -> list[str]:
     try:
         return [f for _, f, _, _ in string.Formatter().parse(template) if f]
@@ -94,11 +98,32 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
     """Static pre-execution check (CaMeLoT-lite). Returns violations; empty means OK."""
     problems: list[str] = []
     kinds: dict[str, str] = {}  # variable -> doc | typed | choice
+    schema_of: dict[str, str] = {}  # typed variable -> reader schema name
+
+    def check_field(arg: Var, where: str) -> None:
+        if arg.field is None:
+            return
+        kind = kinds[arg.var]
+        if kind == "doc":
+            problems.append(f"{where}: {arg.var} is a fetched document and has no fields")
+        elif kind == "choice" and arg.field not in CHOICE_FIELDS:
+            problems.append(
+                f"{where}: a choose_min result has fields {sorted(CHOICE_FIELDS)} "
+                f"(alias or price), not {arg.field!r}"
+            )
+        elif kind == "typed" and schema_of.get(arg.var) in SCHEMAS:
+            known = list(SCHEMAS[schema_of[arg.var]].model_fields)
+            if arg.field not in known:
+                problems.append(
+                    f"{where}: {schema_of[arg.var]} has fields {known}, not {arg.field!r}"
+                )
 
     def check_arg(arg: Arg, where: str) -> None:
         if isinstance(arg, Var):
             if arg.var not in kinds:
                 problems.append(f"{where}: variable {arg.var} used before it is defined")
+            else:
+                check_field(arg, where)
         elif isinstance(arg, Alias) and arg.alias not in ctx.payee_allowlist:
             problems.append(f"{where}: alias {arg.alias} is not on the user's allowlist")
 
@@ -117,6 +142,7 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
             if step.schema_name not in SCHEMAS:
                 problems.append(f"{where}: unknown schema {step.schema_name}")
             kinds[step.out] = "typed"
+            schema_of[step.out] = step.schema_name
         elif isinstance(step, ChooseMin):
             for cand in step.candidates:
                 check_arg(cand.value, where)

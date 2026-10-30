@@ -122,3 +122,55 @@ def test_orchestrator_repairs_a_plan_with_a_bad_placeholder_using_the_validator_
     model = Chatty([f"Here is the plan: {json.dumps(bad)}", f"Fixed: {json.dumps(good)}"])
     plan = Orchestrator(model).plan(sc.user_text, sc.context())
     assert [s.op for s in plan.steps] == ["fetch", "read", "answer"]
+
+
+# ---- field names are checked before anything runs, so repair can fire ------------------
+
+
+def _plan(*steps):
+    return Plan.model_validate({"steps": list(steps)})
+
+
+FETCH_A = {"op": "fetch", "out": "d", "url": {"lit": "http://shop-a.test/plan"}}
+READ_A = {"op": "read", "out": "q", "doc": "d", "schema_name": "PriceQuote"}
+CTX = UserContext(
+    user_text="see http://shop-a.test/plan",
+    payee_allowlist={"shop_a": "0x5A0A000000000000000000000000000000000A01"},
+)
+
+
+def _answer(var, field):
+    return {"op": "answer", "template": "{x}", "args": {"x": {"var": var, "field": field}}}
+
+
+def test_unknown_field_of_a_read_value_is_rejected():
+    problems = validate_plan(_plan(FETCH_A, READ_A, _answer("q", "cost")), CTX)
+    assert any("cost" in p and "PriceQuote" in p for p in problems)
+
+
+def test_known_field_of_a_read_value_is_accepted():
+    assert validate_plan(_plan(FETCH_A, READ_A, _answer("q", "price_usd")), CTX) == []
+
+
+def test_choice_values_expose_alias_and_price_only():
+    choose = {
+        "op": "choose_min",
+        "out": "best",
+        "candidates": [{"alias": "shop_a", "value": {"var": "q", "field": "price_usd"}}],
+    }
+    base = [FETCH_A, READ_A, choose]
+    assert validate_plan(_plan(*base, _answer("best", "price")), CTX) == []
+    assert validate_plan(_plan(*base, _answer("best", "alias")), CTX) == []
+    problems = validate_plan(_plan(*base, _answer("best", "value")), CTX)
+    assert any("value" in p and "alias" in p and "price" in p for p in problems)
+
+
+def test_a_field_on_a_fetched_document_is_rejected():
+    assert any("document" in p for p in validate_plan(_plan(FETCH_A, _answer("d", "text")), CTX))
+
+
+def test_planner_prompt_documents_what_choose_min_produces():
+    from airgap.core.orchestrator import PLAN_SYSTEM
+
+    assert '"field": "alias"' in PLAN_SYSTEM and '"field": "price"' in PLAN_SYSTEM
+    assert "No other fields exist" in PLAN_SYSTEM
