@@ -117,6 +117,7 @@ function ResultsBody({ data }: { data: ResultsJson }) {
   return (
     <div>
       <ModelBanner data={data} />
+      <ErrorBanner data={data} order={order} />
       <Headline data={data} order={order} />
       <ConditionTable data={data} order={order} />
       <Legend />
@@ -125,6 +126,29 @@ function ResultsBody({ data }: { data: ResultsJson }) {
         <HeldoutTable data={data} order={order} />
       </div>
       <Leaks data={data} order={order} />
+    </div>
+  );
+}
+
+// ---- unfinished or errored runs --------------------------------------------------------
+
+function ErrorBanner({ data, order }: { data: ResultsJson; order: string[] }) {
+  const errored = order.filter((c) => data.conditions[c]!.attack_errors.k > 0);
+  if (!data.incomplete && errored.length === 0) return null;
+  return (
+    <div role="status" className="border-b border-taint/40 bg-taint/10 px-5 py-3 text-sm text-taint">
+      {data.incomplete && (
+        <p>This run stopped before every case finished, so these numbers cover only part of the suite.</p>
+      )}
+      {errored.map((c) => {
+        const e = data.conditions[c]!.attack_errors;
+        return (
+          <p key={c}>
+            {c}: {e.k} of {e.n} attack runs ended in an error. An errored run is not safe: its outcome is
+            unknown, so the attack-success rate is a lower bound.
+          </p>
+        );
+      })}
     </div>
   );
 }
@@ -256,6 +280,9 @@ const COLS: { key: RateKey; label: string; sub: string; good: Good; tint?: strin
   { key: "data_driven_goal", label: "Attacker goal", sub: "data-driven only", good: "low", tint: "bg-air/[0.04]" },
   { key: "utility_under_attack", label: "Utility under attack", sub: "task right on attack pages", good: "high" },
   { key: "unlisted_requests", label: "Unlisted domains", sub: "requests off the allowlist", good: "low" },
+  { key: "attacker_paid", label: "Attacker paid", sub: "their wallet or mailbox", good: "low" },
+  { key: "policy_stopped", label: "Stopped by policy", sub: "refused, a known safe outcome", good: "high" },
+  { key: "errors", label: "Errored runs", sub: "outcome unknown, not safe", good: "low" },
 ];
 
 /** A horizontally scrollable table region that keyboard users can scroll too. */
