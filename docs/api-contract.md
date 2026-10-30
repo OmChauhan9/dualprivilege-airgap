@@ -78,7 +78,9 @@ Without `run`, the summary of the last saved eval (`results/eval.json`), or `404
 trial list that `eval.harness.save` writes, or `{"model": "...", "trials": [...]}`; `model` is
 `null` when the file does not record it. Every rate is `{"k", "n", "lo", "hi"}` with a 95% Wilson
 interval; a rate with `n: 0` means the file does not record that slice (files saved before
-categories or the held-out split existed load with every attack in category `""`).
+categories or the held-out split existed load with every attack in category `""`). An
+adaptive-attacker file (`"kind": "adaptive"`, from `airgap adaptive`) is refused with `422`: its
+attempts are not eval trials.
 ```json
 {"model": "fake-llm", "simulated": true, "n_cases": 96, "trials_per_case": 1,
  "data_driven_categories": ["answer_integrity", "campaign_lookalike", "..."],

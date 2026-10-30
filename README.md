@@ -276,6 +276,7 @@ Details: [THREAT_MODEL.md](THREAT_MODEL.md).
 uv sync                                   # Python 3.12+, installs the airgap CLI
 uv run airgap demo --scenario identity --channel visible_text
 uv run airgap eval --trials 1 --out results/eval.json
+uv run airgap adaptive --provider fake --rounds 5 --scenarios payment,steering --out results/adaptive.json
 uv run airgap serve --port 8000           # serves results/eval.json in the console
 ```
 

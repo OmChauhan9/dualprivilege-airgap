@@ -169,6 +169,9 @@ def _load_trials(raw: Any) -> tuple[str | None, bool, list[Trial]]:
     The middle value is True for a partial run saved before it finished."""
     model = None
     incomplete = False
+    if isinstance(raw, dict) and raw.get("kind") == "adaptive":
+        # Adaptive attempts are not corpus trials: they must never be read as an eval.
+        raise ValueError("this is an adaptive-attacker results file, not eval trials")
     if isinstance(raw, dict):
         model = raw.get("model")
         incomplete = raw.get("incomplete") is True
@@ -363,14 +366,18 @@ def create_app(
                 raise HTTPException(
                     404, f"no saved eval at {results_path}; run `airgap eval` first"
                 )
-            return summarize_results(json.loads(results_path.read_text()))
-        found = _result_runs(results_path, published_dir).get(run)
-        if found is None:
-            raise HTTPException(404, "unknown run; see GET /api/results/runs")
+            target, label = results_path, str(results_path)
+        else:
+            found = _result_runs(results_path, published_dir).get(run)
+            if found is None:
+                raise HTTPException(404, "unknown run; see GET /api/results/runs")
+            target, label = found[0], f"run {run}"
         try:
-            return summarize_results(json.loads(found[0].read_text()))
-        except Exception as exc:  # noqa: BLE001 - a corrupt file is a clean error, not a 500
-            raise HTTPException(422, f"run {run} could not be read: {type(exc).__name__}") from None
+            return summarize_results(json.loads(target.read_text()))
+        except Exception as exc:  # noqa: BLE001 - an adaptive file or a corrupt one is a 422
+            raise HTTPException(
+                422, f"{label} is not a readable eval results file: {type(exc).__name__}"
+            ) from None
 
     @app.get("/{path:path}", include_in_schema=False)
     def ui(path: str) -> Any:

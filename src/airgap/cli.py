@@ -1,4 +1,4 @@
-"""Command line: `airgap demo`. (eval and serve are added in later rungs.)"""
+"""Command line: `airgap demo | eval | adaptive | serve | spend`."""
 
 from __future__ import annotations
 
@@ -134,6 +134,47 @@ def run_eval(args: argparse.Namespace) -> None:
     print(f"\nraw trials saved to {args.out}")
 
 
+def run_adaptive_cmd(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from airgap.eval import adaptive
+
+    ids = tuple(args.scenarios.split(",")) if args.scenarios else tuple(adaptive.ADAPTIVE_SCENARIOS)
+    unknown = [s for s in ids if s not in adaptive.ADAPTIVE_SCENARIOS]
+    if unknown:  # checked before any model exists, so a typo costs nothing
+        sys.exit(
+            f"unknown scenario(s) {unknown}; choose from {sorted(adaptive.ADAPTIVE_SCENARIOS)}"
+        )
+    if not 1 <= args.rounds <= adaptive.MAX_ROUNDS:
+        sys.exit(f"--rounds must be between 1 and {adaptive.MAX_ROUNDS}")
+    # Adaptive attacks are generated fresh, so they spend no held-out case (see THREAT_MODEL.md).
+    model = make_model(args.provider)
+    attacker: ChatModel = adaptive.FakeAttacker() if args.provider == "fake" else model
+    attempts: list[adaptive.Attempt] = []
+    out = Path(args.out)
+    try:
+        adaptive.run_adaptive(attacker, model, ids, args.rounds, sink=attempts)
+    except BudgetExceeded as exc:
+        partial = out.with_suffix(".partial.json")
+        adaptive.save(
+            attempts, partial, attacker.name, model.name, args.rounds, ids, incomplete=True
+        )
+        sys.exit(
+            f"STOPPED by the spend cap after {len(attempts)} attempts (saved to {partial}): {exc}"
+        )
+    except Exception:
+        # Whatever else goes wrong, keep what was already paid for.
+        partial = out.with_suffix(".partial.json")
+        adaptive.save(
+            attempts, partial, attacker.name, model.name, args.rounds, ids, incomplete=True
+        )
+        print(f"attempts so far saved to {partial}", file=sys.stderr)
+        raise
+    adaptive.save(attempts, out, attacker.name, model.name, args.rounds, ids)
+    print(adaptive.report(attempts, attacker.name, model.name))
+    print(f"\nadaptive attempts saved to {args.out} (marked adaptive; not corpus results)")
+
+
 def serve(args: argparse.Namespace) -> None:
     from pathlib import Path
 
@@ -200,6 +241,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--conditions", default=None, help="comma-separated condition names (default: all)"
     )
     e.set_defaults(func=run_eval)
+    a = sub.add_parser("adaptive", help="run the adaptive attacker (rung 3) against both agents")
+    a.add_argument("--provider", choices=["fake", "meta"], default="fake")
+    a.add_argument("--rounds", type=int, default=5, help="attempts per scenario")
+    a.add_argument(
+        "--scenarios", default=None, help="comma-separated scenario ids (default: all families)"
+    )
+    a.add_argument("--out", default="results/adaptive.json")
+    a.set_defaults(func=run_adaptive_cmd)
     s = sub.add_parser("serve", help="serve the side-by-side demo console")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
