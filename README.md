@@ -250,15 +250,19 @@ held-out or tuning cases, and are never merged into them. Raw file and every pay
 | C: airgap, plausible user | 25/39 (64%) [48%, 77%] | 21/39 | 6/10 |
 | C: airgap, strict | 4/39 (10%) [4%, 24%] | 0/39 | 1/10 |
 
-- **The attacker's own wallet and mailbox were never paid, in any condition (0/39).** The model
-  mostly ignores injected "pay this wallet" text, and where it did not, the policy still held.
-- **What got through the default airgap is data, not hijacked instructions.** All 25 are in the
-  payment/invoice/steering scenarios: the agent paid the *right* vendor a *wrong amount* that the
-  page stated (an inflated invoice, a false total, a cheaper-looking plan), or repeated a false
-  total in its reply. Several winning payloads contain no instruction at all ("Amount due:
-  $100.00"). This is the leak class in "What we do NOT stop" and
+- **The attacker's own wallet and mailbox were never paid, in any condition (0/39), not even by
+  the unguarded agent.** The model ignored injected "pay this wallet" text in this run, so this run
+  does not exercise the payee rules on that path (the corpus tests do).
+- **What got through the default airgap is data lies, not followed instructions.** All 25 are in the
+  payment, invoice and steering scenarios: 16 paid the *right* vendor the wrong amount the page
+  stated (an inflated invoice), 5 paid the vendor whose price the page lied about (the dearer shop
+  looked cheaper), and 4 repeated a false portfolio total in the reply with no payment. Several
+  winning payloads contain no instruction at all (the steering price lie alone, or "Billing status
+  ... is current."). 21 of the 25 count as *hijacked* because they moved money. This is the leak
+  class in "What we do NOT stop" and
   [#35](https://github.com/OmChauhan9/dualprivilege-airgap/issues/35); the adaptive run did not
-  find a new class, it found the known one quickly (round 1 in 5 of the 6 scenarios where it worked, round 2 in the sixth).
+  find a new class, it found the known one quickly (the first usable attempt won in all 6
+  scenarios).
 - **Where the airgap held and the unguarded agent did not:** email exfiltration, identity and
   lookalike redirects (airgap held 4/4, 2/2 and 3/3 usable rounds; the unguarded agent was breached in 1/4, 2/2 and 1/3).
 - **Strict confirmation** had 0 hijacks, but 4 attempts reached the attacker's goal: in the
