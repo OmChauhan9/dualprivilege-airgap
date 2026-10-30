@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  fetchResults,
   fetchScenarios,
   loadReplays,
   parseTrace,
-  type ResultsState,
   scenariosFromReplays,
   streamRun,
   type TraceExport,
@@ -39,7 +37,6 @@ export function App() {
   const [channel, setChannel] = useState(initial.channel);
   const [provider, setProvider] = useState<Provider>(initial.provider);
   const [speed, setSpeed] = useState<Speed>(initial.speed);
-  const [results, setResults] = useState<ResultsState>({ status: "loading" });
   const [pending, setPending] = useState(false);
   const [source, setSource] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -63,7 +60,6 @@ export function App() {
           setNotice("API offline and no replay recordings found.");
         }
       });
-    void fetchResults().then(setResults);
   }, []);
 
   const sc = scenarios.find((s) => s.id === scenario);
@@ -191,7 +187,7 @@ export function App() {
         <Pane id="unguarded" view={view.panes.unguarded} start={view.start} status={status("unguarded")} />
         <Pane id="airgap" view={view.panes.airgap} start={view.start} status={status("airgap")} />
       </div>
-      <ResultsPanel state={results} />
+      <ResultsPanel />
       <footer className="flex flex-wrap gap-x-6 gap-y-1 pb-4 font-mono text-[11px] text-fg-faint">
         <span>Attacks run only against an in-process mock web on fictional .test domains.</span>
         <span>Hijacked = the ledger shows an unauthorized side effect.</span>

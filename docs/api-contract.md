@@ -48,8 +48,33 @@ Errors before the stream starts: `404` unknown scenario, `400` channel not defin
 scenario, `403` when `provider=meta` and `AIRGAP_ALLOW_REAL_CALLS` is not `1` (the CLI's refusal
 message is the `detail`).
 
-## `GET /api/results`
-Summary of the last saved eval (`results/eval.json`), or `404` if none. The file may be the bare
+## `GET /api/results/runs`
+Every saved run the console can show: the local eval (`results/eval.json`, id `eval`), each
+`results/published/*.json` (id `published:<file stem>`), and each
+`results/published/invalid/*.json` (id `invalid:<file stem>`, `invalid: true`). Folders come from
+`airgap serve --results` / `--published`. Symlinks are skipped. A file that cannot be read stays in
+the list with `error` set and empty counts.
+```json
+{"default": "published:final_heldout", "runs": [{
+  "id": "published:final_heldout", "label": "Final evaluation, held-out split",
+  "file": "final_heldout.json", "invalid": false, "reason": null,
+  "model": "muse-spark-1.3", "simulated": false, "n_cases": 24, "trials_per_case": 3,
+  "incomplete": false, "error": null}]}
+```
+- `label`: from a fixed table in `server/app.py` (`RUN_LABELS`); a file the table does not know shows
+  its file name. Runs are listed in that table's order, then unknown files by name.
+- `invalid`/`reason`: `reason` is set only for invalid runs and says why the run must not be read as
+  a result (`INVALID_REASONS`, with a generic fallback).
+- `simulated`, `n_cases`, `trials_per_case`, `incomplete`: same meaning as in `/api/results`.
+- `default`: `published:final_heldout` when it is readable, else `eval`, else the first readable
+  valid run, else `null`. Never an invalid run.
+
+## `GET /api/results` and `GET /api/results?run=<id>`
+With `run`, the summary of that run; `run` must be an `id` from `/api/results/runs`. The value is
+only a key into the map built from the folder scan and is never joined into a path, so anything
+else (an unknown id, `../../etc/passwd`, encoded variants) is `404`.
+
+Without `run`, the summary of the last saved eval (`results/eval.json`), or `404` if none. The file may be the bare
 trial list that `eval.harness.save` writes, or `{"model": "...", "trials": [...]}`; `model` is
 `null` when the file does not record it. Every rate is `{"k", "n", "lo", "hi"}` with a 95% Wilson
 interval; a rate with `n: 0` means the file does not record that slice (files saved before
@@ -90,7 +115,12 @@ categories or the held-out split existed load with every attack in category `""`
 Two panes (unguarded left, airgapped right) driven by the same stream; a trace timeline per pane;
 provenance badge (origin domain from `fetch`); taint chips on typed values; sanitizer diff viewer
 from `sanitize.removed`; policy decision cards with rule ids and the Rule of Two state; a red
-alert when the ledger shows an unauthorized payment or email; a results panel from `/api/results`
+alert when the ledger shows an unauthorized payment or email; a run picker over
+`/api/results/runs` at the top of the results panel (opens on `default`; each run labeled real model,
+offline simulation or model not recorded; invalid runs only behind a "show invalid run" toggle,
+with their reason in a banner when picked); an attack-success chart (marker at k/n with 95% Wilson
+whiskers, all attacks beside the data-driven subset, k/n text, zero successes drawn up to the upper
+bound, a screen-reader table with the same numbers); a results panel from `/api/results`
 (attack success next to benign completion for every condition, the data-driven subset next to the
 overall rate, the per-category and held-out tables, and every attack that got through with its
 reason, always with k/n and the interval, never a bare percent; an "offline simulation" banner

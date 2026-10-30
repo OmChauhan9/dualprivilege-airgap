@@ -1,7 +1,7 @@
-import { Fragment, type ReactNode, useState } from "react";
-import type { ResultsState } from "../api";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { fetchResults, fetchRuns, type ResultsState } from "../api";
 import { CONDITIONS, categoryLabel, pct } from "../labels";
-import type { ConditionJson, LeakFlag, LeakJson, RateJson, ResultsJson } from "../types";
+import type { ConditionJson, LeakFlag, LeakJson, RateJson, ResultsJson, RunJson, RunsJson } from "../types";
 import * as I from "./icons";
 
 type Good = "low" | "high";
@@ -70,7 +70,48 @@ function Better({ good }: { good: Good }) {
   );
 }
 
-export function ResultsPanel({ state }: { state: ResultsState }) {
+type RunsState = { status: "loading" } | { status: "ok"; data: RunsJson } | { status: "unavailable" };
+
+export function ResultsPanel() {
+  const [runs, setRuns] = useState<RunsState>({ status: "loading" });
+  const [picked, setPicked] = useState<string | null>(null);
+  const [showInvalid, setShowInvalid] = useState(false);
+  const [state, setState] = useState<ResultsState>({ status: "loading" });
+
+  useEffect(() => {
+    fetchRuns()
+      .then((data) => {
+        setRuns({ status: "ok", data });
+        setPicked(data.default);
+        if (data.default === null) setState({ status: "missing", message: "no saved runs" });
+      })
+      .catch(() => {
+        // No run list (an older server): show the local eval the way the console always did.
+        setRuns({ status: "unavailable" });
+        void fetchResults().then(setState);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (picked === null) return;
+    let live = true;
+    setState({ status: "loading" });
+    void fetchResults(picked).then((s) => live && setState(s));
+    return () => {
+      live = false;
+    };
+  }, [picked]);
+
+  const list = runs.status === "ok" ? runs.data.runs : [];
+  const run = list.find((r) => r.id === picked) ?? null;
+  const toggleInvalid = (on: boolean) => {
+    setShowInvalid(on);
+    if (!on && run?.invalid && runs.status === "ok") {
+      const next = runs.data.default ?? list.find((r) => !r.invalid)?.id ?? null;
+      setPicked(next);
+      if (next === null) setState({ status: "missing", message: "no saved runs" });
+    }
+  };
   return (
     <section className="panel overflow-hidden" aria-labelledby="results-h">
       <header className="flex flex-wrap items-center gap-3 border-b border-ink-700 px-4 py-3">
@@ -78,7 +119,9 @@ export function ResultsPanel({ state }: { state: ResultsState }) {
         <h2 id="results-h" className="font-mono text-[14px] font-bold tracking-[0.16em] uppercase">
           Evaluation results
         </h2>
-        <span className="font-mono text-[12px] text-fg-muted">GET /api/results · results/eval.json</span>
+        <span className="font-mono text-[12px] text-fg-muted">
+          {run ? `GET /api/results?run=${run.id} · ${run.file}` : "GET /api/results · results/eval.json"}
+        </span>
         {state.status === "ok" && (
           <span className="ml-auto flex flex-wrap items-center gap-2 font-mono text-[12px] text-fg-muted">
             <span className="chip border-ink-500">model {state.data.model ?? "not recorded"}</span>
@@ -89,10 +132,14 @@ export function ResultsPanel({ state }: { state: ResultsState }) {
           </span>
         )}
       </header>
+      {list.length > 0 && (
+        <RunPicker runs={list} run={run} onPick={setPicked} showInvalid={showInvalid} onShowInvalid={toggleInvalid} />
+      )}
+      {run?.invalid && <InvalidBanner run={run} />}
       {state.status === "loading" && <p className="px-4 py-6 text-fg-muted">loading…</p>}
       {state.status === "missing" && (
         <div className="space-y-2 px-4 py-6">
-          <p className="text-fg">No saved evaluation yet.</p>
+          <p className="text-fg">{run ? "This run could not be found." : "No saved evaluation yet."}</p>
           <p className="text-[13px] text-fg-muted">
             Run <code className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-fg">uv run airgap eval</code>, then
             reload. Results are shown as k/n with Wilson intervals, next to benign completion.
@@ -104,21 +151,141 @@ export function ResultsPanel({ state }: { state: ResultsState }) {
           Could not load results: {state.message}
         </p>
       )}
-      {state.status === "ok" && <ResultsBody data={state.data} />}
+      {state.status === "ok" && (
+        <ResultsBody data={state.data} file={run?.file ?? "results/eval.json"} invalid={run?.invalid === true} />
+      )}
     </section>
   );
 }
 
-function ResultsBody({ data }: { data: ResultsJson }) {
+// ---- run picker ----------------------------------------------------------------------
+
+type RunKind = "real" | "simulated" | "unrecorded" | "invalid";
+
+const runKind = (r: RunJson): RunKind =>
+  r.invalid ? "invalid" : r.simulated === true ? "simulated" : r.simulated === false ? "real" : "unrecorded";
+
+const KINDS: Record<RunKind, { group: string; badge: string; tone: string }> = {
+  real: { group: "Real model", badge: "Real model", tone: "border-air/60 bg-air/10 text-air" },
+  simulated: {
+    group: "Offline simulation (plumbing check, not evidence)",
+    badge: "Offline simulation · plumbing check",
+    tone: "border-warn/60 bg-warn/10 text-warn",
+  },
+  unrecorded: { group: "Model not recorded", badge: "Model not recorded", tone: "border-warn/60 bg-warn/10 text-warn" },
+  invalid: {
+    group: "Invalid (kept so it is not hidden)",
+    badge: "Invalid run · not a result",
+    tone: "border-crit/60 bg-crit/10 text-crit",
+  },
+};
+
+function runOption(r: RunJson): string {
+  if (r.error) return `${r.label} · unreadable`;
+  const trials = `${r.trials_per_case} trial${r.trials_per_case === 1 ? "" : "s"}/case`;
+  const model = r.model ?? "model not recorded";
+  return `${r.label} · ${model} · ${r.n_cases} cases × ${trials}${r.incomplete ? " · incomplete" : ""}`;
+}
+
+function KindBadge({ kind }: { kind: RunKind }) {
+  const Icon = kind === "real" ? I.Brain : I.Alert;
+  return (
+    <span className={`chip ${KINDS[kind].tone}`}>
+      <Icon aria-hidden="true" />
+      {KINDS[kind].badge}
+    </span>
+  );
+}
+
+function RunPicker({
+  runs,
+  run,
+  onPick,
+  showInvalid,
+  onShowInvalid,
+}: {
+  runs: RunJson[];
+  run: RunJson | null;
+  onPick: (id: string) => void;
+  showInvalid: boolean;
+  onShowInvalid: (on: boolean) => void;
+}) {
+  const kinds: RunKind[] = showInvalid ? ["real", "simulated", "unrecorded", "invalid"] : ["real", "simulated", "unrecorded"];
+  const invalid = runs.filter((r) => r.invalid);
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-700 bg-ink-850 px-4 py-2.5">
+      <label htmlFor="run-picker" className="label">
+        Run
+      </label>
+      <select
+        id="run-picker"
+        value={run?.id ?? ""}
+        onChange={(e) => onPick(e.target.value)}
+        className="max-w-full min-w-0 flex-1 rounded-md border border-ink-500 bg-ink-900 px-2 py-1.5 font-mono text-[13px] text-fg sm:flex-none"
+      >
+        {kinds.map((k) => {
+          const rows = runs.filter((r) => runKind(r) === k);
+          return (
+            rows.length > 0 && (
+              <optgroup key={k} label={KINDS[k].group}>
+                {rows.map((r) => (
+                  <option key={r.id} value={r.id} disabled={r.error !== null}>
+                    {runOption(r)}
+                  </option>
+                ))}
+              </optgroup>
+            )
+          );
+        })}
+      </select>
+      {run && <KindBadge kind={runKind(run)} />}
+      {invalid.length > 0 && (
+        <label className="ml-auto flex cursor-pointer items-center gap-2 font-mono text-[12px] text-fg-muted hover:text-fg">
+          <input
+            type="checkbox"
+            checked={showInvalid}
+            onChange={(e) => onShowInvalid(e.target.checked)}
+            className="accent-crit"
+          />
+          Show invalid run{invalid.length === 1 ? "" : "s"} ({invalid.length})
+        </label>
+      )}
+    </div>
+  );
+}
+
+function InvalidBanner({ run }: { run: RunJson }) {
+  return (
+    <div role="note" aria-label="Invalid run" className="flex gap-3 border-b-2 border-crit/70 bg-crit/[0.09] px-4 py-3 text-crit">
+      <I.Cross className="mt-1 shrink-0 text-xl" />
+      <div className="space-y-1">
+        <p className="font-mono text-[15px] font-bold tracking-wide uppercase">Invalid run: do not read these numbers as results</p>
+        <p className="text-[13px] text-fg">
+          <span className="text-fg-muted">Why: </span>
+          {run.reason}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ResultsBody({ data, file, invalid }: { data: ResultsJson; file: string; invalid: boolean }) {
   const order = [
     ...Object.keys(CONDITIONS).filter((c) => c in data.conditions),
     ...Object.keys(data.conditions).filter((c) => !(c in CONDITIONS)),
   ];
   return (
     <div>
-      <ModelBanner data={data} />
+      {invalid ? (
+        <p role="alert" className="border-b-2 border-crit/70 bg-crit/[0.12] px-4 py-2 font-mono text-[14px] font-bold tracking-wide text-crit uppercase">
+          Invalid run: shown for transparency only. Do not cite these numbers.
+        </p>
+      ) : (
+        <ModelBanner data={data} file={file} />
+      )}
       <ErrorBanner data={data} order={order} />
       <Headline data={data} order={order} />
+      <AttackChart data={data} order={order} />
       <ConditionTable data={data} order={order} />
       <Legend />
       <div className="grid gap-px border-t border-ink-700 bg-ink-700 min-[1440px]:grid-cols-[3fr_2fr]">
@@ -155,7 +322,7 @@ function ErrorBanner({ data, order }: { data: ResultsJson; order: string[] }) {
 
 // ---- model label ---------------------------------------------------------------------
 
-function ModelBanner({ data }: { data: ResultsJson }) {
+function ModelBanner({ data, file }: { data: ResultsJson; file: string }) {
   const simulated = data.simulated ?? (data.model === null ? null : data.model.startsWith("fake"));
   const runs = data.trials_per_case;
   if (simulated === true) {
@@ -195,7 +362,7 @@ function ModelBanner({ data }: { data: ResultsJson }) {
       <div className="space-y-1">
         <p className="font-mono text-[15px] font-bold tracking-wide uppercase">Model not recorded</p>
         <p className="text-[13px] text-fg">
-          results/eval.json does not say which model produced these numbers, so treat them as unverified. A default{" "}
+          {file} does not say which model produced these numbers, so treat them as unverified. A default{" "}
           <code className="font-mono text-warn">uv run airgap eval</code> run uses the offline FakeLLM: a plumbing check,
           not evidence about real models.
         </p>
@@ -266,6 +433,182 @@ function Headline({ data, order }: { data: ResultsJson; order: string[] }) {
   );
 }
 
+// ---- attack success chart ------------------------------------------------------------
+
+const SERIES = [
+  { key: "hijacked", label: "All attacks", shape: "circle", mark: "var(--color-fg)" },
+  { key: "data_driven_hijacked", label: "Data-driven subset", shape: "diamond", mark: "var(--color-air)" },
+] as const;
+
+type Shape = (typeof SERIES)[number]["shape"];
+
+/** A marker centered on (0, 0); the caller positions it with a nested <svg x="…%">. */
+function Marker({ shape, fill }: { shape: Shape; fill: string }) {
+  const ring = { stroke: "var(--color-ink-900)", strokeWidth: 2 };
+  return shape === "circle" ? <circle r={5} fill={fill} {...ring} /> : <polygon points="0,-6.5 6.5,0 0,6.5 -6.5,0" fill={fill} {...ring} />;
+}
+
+const TICKS = [0, 0.25, 0.5, 0.75, 1];
+
+function Axis() {
+  return (
+    <svg width="100%" height="14" overflow="visible" aria-hidden="true" className="block">
+      {TICKS.map((t) => (
+        <text
+          key={t}
+          x={`${t * 100}%`}
+          y="10"
+          textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"}
+          className="fill-fg-faint font-mono text-[10px]"
+        >
+          {t * 100}
+          {t === 1 ? "%" : ""}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
+/** Point at k/n, whiskers over the whole 95% Wilson interval, on a 0–100% scale. */
+function IntervalMark({ r, shape, fill, title }: { r: RateJson; shape: Shape; fill: string; title: string }) {
+  const at = (x: number) => `${x * 100}%`;
+  const y = 13;
+  return (
+    <svg width="100%" height="26" overflow="visible" className="block" aria-hidden="true">
+      <title>{title}</title>
+      {TICKS.map((t) => (
+        <line key={t} x1={at(t)} x2={at(t)} y1="2" y2="24" stroke="var(--color-ink-700)" strokeWidth="1" />
+      ))}
+      {r.n > 0 && (
+        <>
+          <line x1={at(r.lo)} x2={at(r.hi)} y1={y} y2={y} stroke="var(--color-fg-muted)" strokeWidth="2" />
+          {[r.lo, r.hi].map((x, i) => (
+            <line key={i} x1={at(x)} x2={at(x)} y1={y - 6} y2={y + 6} stroke="var(--color-fg-muted)" strokeWidth="2" strokeLinecap="round" />
+          ))}
+          <svg x={at(r.k / r.n)} y={y} overflow="visible">
+            <Marker shape={shape} fill={fill} />
+          </svg>
+        </>
+      )}
+    </svg>
+  );
+}
+
+function rateSentence(r: RateJson): string {
+  if (r.n === 0) return "not recorded";
+  const bound = r.k === 0 ? `, none observed, upper bound ${pct(r.hi)}` : "";
+  return `${r.k} of ${r.n} hijacked, 95% Wilson interval ${pct(r.lo)} to ${pct(r.hi)}${bound}`;
+}
+
+function IntervalLabel({ r }: { r: RateJson }) {
+  if (r.n === 0) return <span className="font-mono text-[11px] text-fg-muted">not recorded</span>;
+  return (
+    <span className="font-mono text-[12px] whitespace-nowrap tabular-nums">
+      <span className="font-bold text-fg">
+        {r.k}/{r.n}
+      </span>{" "}
+      <span className="text-fg-muted">{r.k === 0 ? `≤ ${pct(r.hi)}` : `${pct(r.lo)}–${pct(r.hi)}`}</span>
+    </span>
+  );
+}
+
+/**
+ * Attack success per condition with its whole interval drawn to scale, so a small sample looks
+ * as uncertain as it is: zero successes still shows a whisker up to the interval's upper bound.
+ */
+function AttackChart({ data, order }: { data: ResultsJson; order: string[] }) {
+  const correlated = data.trials_per_case > 1;
+  return (
+    <figure className="relative border-b border-ink-700 px-4 py-4" aria-labelledby="chart-h">
+      <figcaption className="mb-3 space-y-1">
+        <h3 id="chart-h" className="label">
+          Attack success (hijacked) per condition, with 95% Wilson intervals
+        </h3>
+        <p className="text-[12px] text-fg-muted">
+          Marker at k/n, whiskers over the interval. Wide whiskers mean few runs: read the whole whisker, not the marker.
+          With zero successes the whisker still reaches the upper bound (shown as ≤).
+          <span className="sm:hidden"> Each track runs from 0% on the left to 100% on the right.</span>
+          {correlated &&
+            ` With ${data.trials_per_case} trials per case the runs are not independent, so these intervals are optimistic.`}
+        </p>
+      </figcaption>
+      <div
+        className="grid items-center gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(140px,auto)_minmax(120px,1fr)_auto_minmax(120px,1fr)_auto]"
+        aria-hidden="true"
+      >
+        <div className="hidden sm:block" />
+        {SERIES.map((ser) => (
+          <Fragment key={ser.key}>
+            <div className="hidden sm:block">
+              <div className="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold text-fg">
+                <svg width="14" height="14" overflow="visible">
+                  <svg x="7" y="7" overflow="visible">
+                    <Marker shape={ser.shape} fill={ser.mark} />
+                  </svg>
+                </svg>
+                {ser.label}
+              </div>
+              <Axis />
+            </div>
+            <div className="hidden sm:block" />
+          </Fragment>
+        ))}
+        {order.map((cond) => {
+          const s = data.conditions[cond]!;
+          return (
+            <Fragment key={cond}>
+              <div className="pt-2 text-[13px] font-semibold text-fg sm:pt-0">{condLabel(cond)}</div>
+              {SERIES.map((ser) => (
+                <div key={ser.key} className="flex items-center gap-2 sm:contents">
+                  <span className="w-20 shrink-0 text-[11px] leading-tight text-fg-muted sm:hidden">{ser.label}</span>
+                  <div className="min-w-0 flex-1 px-1.5">
+                    <IntervalMark
+                      r={s[ser.key]}
+                      shape={ser.shape}
+                      fill={ser.mark}
+                      title={`${condLabel(cond)}, ${ser.label.toLowerCase()}: ${rateSentence(s[ser.key])}`}
+                    />
+                  </div>
+                  {/* Fixed width on small screens so every track in the stack has the same scale. */}
+                  <div className="w-[16ch] shrink-0 text-right text-[12px] sm:w-auto sm:text-left">
+                    <IntervalLabel r={s[ser.key]} />
+                  </div>
+                </div>
+              ))}
+            </Fragment>
+          );
+        })}
+      </div>
+      {/* A table ignores width: 1px; this wrapper (inside a `relative` figure) keeps it out of the layout. */}
+      <div className="sr-only">
+        <table>
+          <caption>Attack success per condition, k of n hijacked with a 95% Wilson interval</caption>
+          <thead>
+            <tr>
+              <th scope="col">Condition</th>
+              {SERIES.map((ser) => (
+                <th key={ser.key} scope="col">
+                  {ser.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {order.map((cond) => (
+              <tr key={cond}>
+                <th scope="row">{condLabel(cond)}</th>
+                {SERIES.map((ser) => (
+                  <td key={ser.key}>{rateSentence(data.conditions[cond]![ser.key])}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </figure>
+  );
+}
+
 // ---- per-condition table -------------------------------------------------------------
 
 type RateKey = {
@@ -288,7 +631,8 @@ const COLS: { key: RateKey; label: string; sub: string; good: Good; tint?: strin
 /** A horizontally scrollable table region that keyboard users can scroll too. */
 function ScrollTable({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
+    // `relative` keeps absolutely placed screen-reader text inside the scroll box, not the page.
+    <div className="relative overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
       {children}
     </div>
   );
