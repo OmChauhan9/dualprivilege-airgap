@@ -17,7 +17,8 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
-from airgap.eval.harness import Trial, failures, summarize
+from airgap.eval.corpus import DATA_DRIVEN, PUBLISHED_LEAKS, attack_cases
+from airgap.eval.harness import Trial, by_category, failures, summarize
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel, RealCallsDisabled
 from airgap.server.runner import Message, run_both
@@ -87,13 +88,61 @@ def _load_trials(raw: Any) -> tuple[str | None, list[Trial]]:
     return model, [Trial(**{k: v for k, v in row.items() if k in names}) for row in raw]
 
 
+def _subset(rows: list[Trial]) -> dict[str, dict[str, float | int]]:
+    """Hijacked, goal reached and benign completion over a slice of trials (the held-out rows)."""
+    attacks = [t for t in rows if t.is_attack]
+    benign = [t for t in rows if not t.is_attack]
+    return {
+        "hijacked": _rate(Rate(sum(t.hijacked for t in attacks), len(attacks))),
+        "goal_reached": _rate(Rate(sum(t.goal_reached for t in attacks), len(attacks))),
+        "benign_completion": _rate(Rate(sum(t.benign_ok for t in benign), len(benign))),
+    }
+
+
+def _leak_details(trials: list[Trial], condition: str) -> list[dict[str, Any]]:
+    """One row per case that got through. `reason` is the PUBLISHED_LEAKS entry, which explains
+    C_airgap only, so other conditions get `probes` (what the attack tries) and no reason."""
+    probes = {c.id: c.probes for c in attack_cases()}
+    leaked = failures(trials, condition)
+    out = []
+    for case_id in sorted({t.case_id for t in leaked}):
+        through = [t for t in leaked if t.case_id == case_id]
+        flags = [
+            name
+            for name, hit in (
+                ("hijacked", any(t.hijacked for t in through)),
+                ("goal_reached", any(t.goal_reached for t in through)),
+                ("unlisted_request", any(t.unlisted_requests for t in through)),
+            )
+            if hit
+        ]
+        reason = PUBLISHED_LEAKS.get(case_id) if condition == "C_airgap" else None
+        out.append(
+            {
+                "case_id": case_id,
+                "category": through[0].category,
+                "probes": probes.get(case_id, ""),
+                "heldout": through[0].heldout,
+                "flags": flags,
+                "runs": len(through),
+                "trials": sum(t.condition == condition and t.case_id == case_id for t in trials),
+                "published": case_id in PUBLISHED_LEAKS,
+                "reason": reason,
+            }
+        )
+    return out
+
+
 def summarize_results(raw: Any) -> dict[str, Any]:
     model, trials = _load_trials(raw)
     table = summarize(trials)
     return {
         "model": model,
+        # Same test as the CLI report: FakeLLM names start with "fake". Unknown when unrecorded.
+        "simulated": None if model is None else model.startswith("fake"),
         "n_cases": len({t.case_id for t in trials}),
         "trials_per_case": max((t.trial for t in trials), default=-1) + 1,
+        "data_driven_categories": sorted(DATA_DRIVEN),
         "conditions": {
             cond: {
                 "hijacked": _rate(s.hijacked),
@@ -103,10 +152,23 @@ def summarize_results(raw: Any) -> dict[str, Any]:
                 "mean_latency_s": float(s.mean_latency_s),
                 "mean_tokens": float(s.mean_tokens),
                 "confirmations_per_run": float(s.confirmations_per_run),
+                "data_driven_hijacked": _rate(s.data_driven_hijacked),
+                "data_driven_goal": _rate(s.data_driven_goal),
+                "unlisted_requests": _rate(s.unlisted_requests),
+                "heldout": _subset([t for t in trials if t.condition == cond and t.heldout]),
+                "by_category": {
+                    cat: {
+                        "hijacked": _rate(hijacked),
+                        "goal_reached": _rate(goal),
+                        "data_driven": cat in DATA_DRIVEN,
+                    }
+                    for cat, (hijacked, goal) in by_category(trials, cond).items()
+                },
             }
             for cond, s in table.items()
         },
         "leaks": {cond: sorted({t.case_id for t in failures(trials, cond)}) for cond in table},
+        "leak_details": {cond: _leak_details(trials, cond) for cond in table},
     }
 
 

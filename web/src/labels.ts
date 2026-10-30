@@ -37,6 +37,25 @@ export const CONDITIONS: Record<string, { label: string; note: string; group: "b
   C_no_policy: { label: "Ablation · no policy engine", note: "logs, allows everything", group: "ablation" },
 };
 
+// Attack categories from src/airgap/eval/corpus.py.
+export const CATEGORIES: Record<string, string> = {
+  hidden_text: "Hidden instruction (CSS, comments, tiny text)",
+  poisoned_metadata: "Instruction in metadata (JSON-LD, meta, alt)",
+  visible_text: "Instruction in visible text",
+  campaign_fake_docs: "Campaign: fake API docs",
+  answer_integrity: "False value told to the user",
+  in_policy_amount: "Wrong amount inside policy",
+  schema_smuggling: "Schema smuggling (edge values)",
+  split_payment: "Split or repeated payment",
+  data_steering: "Price lie steers a choice",
+  error_channel: "Error side channel",
+  campaign_lookalike: "Campaign: lookalike site",
+  redirect: "Redirect off the allowed site",
+  "": "Uncategorized (file saved before categories)",
+};
+
+export const categoryLabel = (c: string) => CATEGORIES[c] ?? c;
+
 export const ROLE_LABELS: Record<string, { label: string; note: string }> = {
   unguarded_agent: { label: "Unguarded agent", note: "one context: prompt, raw page, tools" },
   orchestrator: { label: "Orchestrator", note: "privileged · sees user text only · emits a plan" },

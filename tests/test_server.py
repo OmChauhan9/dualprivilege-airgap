@@ -232,6 +232,173 @@ def test_results_reads_model_name_when_recorded(tmp_path):
     assert client.get("/api/results").json()["model"] == "fake-llm"
 
 
+@pytest.fixture(scope="module")
+def fake_trials() -> list:
+    return run_suite(FakeLLM())
+
+
+def results_for(tmp_path: Path, payload: object) -> dict:
+    path = tmp_path / "eval.json"
+    path.write_text(json.dumps(payload))
+    client = TestClient(create_app(results_path=path, web_dir=tmp_path / "dist"))
+    resp = client.get("/api/results")
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def is_rate(rate: dict) -> bool:
+    return set(rate) == {"k", "n", "lo", "hi"} and 0 <= rate["lo"] <= rate["hi"] <= 1
+
+
+def test_results_reports_the_data_driven_subset_per_condition(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    from airgap.eval.corpus import DATA_DRIVEN
+    from airgap.eval.harness import summarize
+
+    body = results_for(tmp_path, [asdict(t) for t in fake_trials])
+    n_dd = sum(c.category in DATA_DRIVEN for c in attack_cases())
+    assert 0 < n_dd < len(attack_cases())
+    assert body["data_driven_categories"] == sorted(DATA_DRIVEN)
+    for cond, s in summarize(fake_trials).items():
+        c = body["conditions"][cond]
+        for key, rate in (
+            ("data_driven_hijacked", s.data_driven_hijacked),
+            ("data_driven_goal", s.data_driven_goal),
+            ("unlisted_requests", s.unlisted_requests),
+        ):
+            assert is_rate(c[key])
+            assert (c[key]["k"], c[key]["n"]) == (rate.k, rate.n)
+        assert c["data_driven_hijacked"]["n"] == n_dd
+        assert c["unlisted_requests"]["n"] == len(attack_cases())
+
+
+def test_results_by_category_matches_the_harness_table(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    from airgap.eval.corpus import DATA_DRIVEN
+    from airgap.eval.harness import by_category
+
+    body = results_for(tmp_path, [asdict(t) for t in fake_trials])
+    for cond, c in body["conditions"].items():
+        table = by_category(fake_trials, cond)
+        assert list(c["by_category"]) == list(table)
+        for cat, (hijacked, goal) in table.items():
+            row = c["by_category"][cat]
+            assert is_rate(row["hijacked"]) and is_rate(row["goal_reached"])
+            assert (row["hijacked"]["k"], row["hijacked"]["n"]) == (hijacked.k, hijacked.n)
+            assert (row["goal_reached"]["k"], row["goal_reached"]["n"]) == (goal.k, goal.n)
+            assert row["data_driven"] is (cat in DATA_DRIVEN)
+        assert sum(r["hijacked"]["n"] for r in c["by_category"].values()) == len(attack_cases())
+
+
+def test_results_reports_held_out_rows_separately(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    body = results_for(tmp_path, [asdict(t) for t in fake_trials])
+    held_attacks = [c for c in attack_cases() if c.heldout]
+    held_benign = [c for c in benign_cases() if c.heldout]
+    assert held_attacks and held_benign
+    for cond, c in body["conditions"].items():
+        held = c["heldout"]
+        assert set(held) == {"hijacked", "goal_reached", "benign_completion"}
+        assert all(is_rate(r) for r in held.values())
+        assert held["hijacked"]["n"] == len(held_attacks)
+        assert held["goal_reached"]["n"] == len(held_attacks)
+        assert held["benign_completion"]["n"] == len(held_benign)
+        rows = [t for t in fake_trials if t.condition == cond and t.heldout and t.is_attack]
+        assert held["hijacked"]["k"] == sum(t.hijacked for t in rows)
+
+
+def test_results_give_every_leak_its_published_reason(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    body = results_for(tmp_path, [asdict(t) for t in fake_trials])
+    probes = {c.id: c.probes for c in attack_cases()}
+    assert set(body["leak_details"]) == set(body["leaks"])
+    for cond, details in body["leak_details"].items():
+        # Same cases, same order as the existing `leaks` list.
+        assert [d["case_id"] for d in details] == body["leaks"][cond]
+        for d in details:
+            assert set(d) == {
+                "case_id", "category", "probes", "heldout", "flags", "runs", "trials",
+                "published", "reason",
+            }  # fmt: skip
+            assert d["flags"] and set(d["flags"]) <= {
+                "hijacked",
+                "goal_reached",
+                "unlisted_request",
+            }
+            assert 1 <= d["runs"] <= d["trials"]
+            assert d["probes"] == probes[d["case_id"]]
+            assert d["published"] is (d["case_id"] in PUBLISHED_LEAKS)
+    airgap = body["leak_details"]["C_airgap"]
+    assert airgap
+    for d in airgap:
+        assert d["reason"] == PUBLISHED_LEAKS[d["case_id"]]
+    # The reasons explain C_airgap only; the unguarded agent's leaks are not "known limitations".
+    assert all(d["reason"] is None for d in body["leak_details"]["A_no_defense"])
+
+
+def test_leak_flags_name_what_got_through(tmp_path, fake_trials):
+    from dataclasses import asdict, replace
+
+    base = next(t for t in fake_trials if t.condition == "C_airgap" and not t.got_through)
+    attack = replace(
+        base,
+        case_id="x:redirect",
+        category="redirect",
+        is_attack=True,
+        hijacked=False,
+        goal_reached=False,
+        unlisted_requests=("http://relay.test/",),
+    )
+    detail = results_for(tmp_path, [asdict(attack)])["leak_details"]["C_airgap"]
+    assert detail == [
+        {
+            "case_id": "x:redirect",
+            "category": "redirect",
+            "probes": "",
+            "heldout": attack.heldout,
+            "flags": ["unlisted_request"],
+            "runs": 1,
+            "trials": 1,
+            "published": False,
+            "reason": None,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("model", "simulated"), [("fake-llm", True), ("muse-spark-1.3", False), (None, None)]
+)
+def test_results_say_whether_the_model_was_simulated(tmp_path, fake_trials, model, simulated):
+    from dataclasses import asdict
+
+    rows = [asdict(t) for t in fake_trials]
+    payload = rows if model is None else {"model": model, "trials": rows}
+    body = results_for(tmp_path, payload)
+    assert body["model"] == model
+    assert body["simulated"] is simulated
+
+
+def test_results_load_files_saved_before_categories_existed(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    old = [
+        {
+            k: v
+            for k, v in asdict(t).items()
+            if k not in ("category", "heldout", "unlisted_requests")
+        }
+        for t in fake_trials
+    ]
+    c = results_for(tmp_path, old)["conditions"]["C_airgap"]
+    assert c["data_driven_hijacked"]["n"] == 0  # unknown, not zero leaks: the UI says so
+    assert c["heldout"]["hijacked"]["n"] == 0
+    assert list(c["by_category"]) == [""]
+
+
 # ---- static UI and replay ---------------------------------------------------------------
 
 
