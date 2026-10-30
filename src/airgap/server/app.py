@@ -26,6 +26,7 @@ from airgap.world.scenarios import SCENARIOS
 
 REPO_ROOT = Path(__file__).parents[3]
 DEFAULT_RESULTS = Path("results/eval.json")
+DEFAULT_PUBLISHED = Path("results/published")
 DEFAULT_WEB_DIR = REPO_ROOT / "web" / "dist"
 
 _NO_UI = """<!doctype html><title>airgap</title>
@@ -71,6 +72,84 @@ def _ui_files(web_dir: Path) -> dict[str, Path]:
         for f in root.rglob("*")
         if f.is_file() and not f.is_symlink()
     }
+
+
+# Labels for the run picker, keyed by run id, in the order the picker lists them. A file not
+# listed here shows its file name and comes after these.
+RUN_LABELS = {
+    "eval": "Latest local eval (airgap eval)",
+    "published:final_heldout": "Final evaluation, held-out split",
+    "published:real_C_tuning_v3": "Tuning: airgap conditions (v3)",
+    "published:real_C_tuning_v2": "Tuning: airgap before the memo fix (v2)",
+    "published:real_BC_tuning": "Tuning: prompt defense and first airgap run",
+    "published:real_A_tuning": "Tuning: unguarded baseline",
+    "published:offline_fakellm": "Offline FakeLLM reference (plumbing check)",
+    "invalid:first_run_INVALID": "First real run (INVALID)",
+}
+# Why a run under published/invalid/ must not be read as a result. Same text as its README.
+INVALID_REASONS = {
+    "invalid:first_run_INVALID": (
+        "The first real run forced JSON-schema decoding, which corrupted key names and made the "
+        "unguarded agent look hijacked when it had only mis-parsed. Replaced by real_A_tuning."
+    ),
+}
+INVALID_FALLBACK = "Kept under results/published/invalid/ so it is not hidden; not a valid result."
+# The run the console opens on: the final real evaluation when it exists, else the local eval.
+DEFAULT_RUNS = ("published:final_heldout", "eval")
+
+
+def _json_files(folder: Path) -> list[Path]:
+    """Regular *.json files directly in `folder`, symlinks excluded, sorted by name."""
+    if not folder.is_dir():
+        return []
+    return sorted(f for f in folder.resolve().glob("*.json") if f.is_file() and not f.is_symlink())
+
+
+def _result_runs(results_path: Path, published_dir: Path) -> dict[str, tuple[Path, bool]]:
+    """Every run the console can show, keyed by run id, with whether it is marked invalid.
+
+    The `run` query value is only ever a key into this map, built from a directory scan; it is
+    never joined into a filesystem path (same rule as `_ui_files`)."""
+    runs: dict[str, tuple[Path, bool]] = {}
+    if results_path.is_file() and not results_path.is_symlink():
+        runs["eval"] = (results_path, False)
+    for f in _json_files(published_dir):
+        runs[f"published:{f.stem}"] = (f, False)
+    for f in _json_files(published_dir / "invalid"):
+        runs[f"invalid:{f.stem}"] = (f, True)
+    known = list(RUN_LABELS)
+    rank = {run_id: (known.index(run_id) if run_id in known else len(known)) for run_id in runs}
+    return dict(sorted(runs.items(), key=lambda kv: rank[kv[0]]))
+
+
+def _run_info(run_id: str, path: Path, invalid: bool) -> dict[str, Any]:
+    info: dict[str, Any] = {
+        "id": run_id,
+        "label": RUN_LABELS.get(run_id, path.name),
+        "file": path.name,
+        "invalid": invalid,
+        "reason": INVALID_REASONS.get(run_id, INVALID_FALLBACK) if invalid else None,
+        "model": None,
+        "simulated": None,
+        "n_cases": 0,
+        "trials_per_case": 0,
+        "incomplete": False,
+        "error": None,
+    }
+    try:
+        model, incomplete, trials = _load_trials(json.loads(path.read_text()))
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        # A broken file stays visible in the list, flagged, instead of hiding or failing the rest.
+        info["error"] = f"could not read {path.name}: {type(exc).__name__}"
+        return info
+    info.update(
+        model=model,
+        simulated=_simulated(model),
+        n_cases=len({t.case_id for t in trials}),
+        trials_per_case=_trials_per_case(trials),
+        incomplete=incomplete,
+    )
+    return info
 
 
 def _rate(r: Rate) -> dict[str, float | int]:
@@ -137,16 +216,24 @@ def _leak_details(trials: list[Trial], condition: str) -> list[dict[str, Any]]:
     return out
 
 
+def _simulated(model: str | None) -> bool | None:
+    # Same test as the CLI report: FakeLLM names start with "fake". Unknown when unrecorded.
+    return None if model is None else model.startswith("fake")
+
+
+def _trials_per_case(trials: list[Trial]) -> int:
+    return max((t.trial for t in trials), default=-1) + 1
+
+
 def summarize_results(raw: Any) -> dict[str, Any]:
     model, incomplete, trials = _load_trials(raw)
     table = summarize(trials)
     return {
         "model": model,
         "incomplete": incomplete,
-        # Same test as the CLI report: FakeLLM names start with "fake". Unknown when unrecorded.
-        "simulated": None if model is None else model.startswith("fake"),
+        "simulated": _simulated(model),
         "n_cases": len({t.case_id for t in trials}),
-        "trials_per_case": max((t.trial for t in trials), default=-1) + 1,
+        "trials_per_case": _trials_per_case(trials),
         "data_driven_categories": sorted(DATA_DRIVEN),
         "conditions": {
             cond: {
@@ -184,7 +271,11 @@ def summarize_results(raw: Any) -> dict[str, Any]:
     }
 
 
-def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB_DIR) -> FastAPI:
+def create_app(
+    results_path: Path = DEFAULT_RESULTS,
+    web_dir: Path = DEFAULT_WEB_DIR,
+    published_dir: Path = DEFAULT_PUBLISHED,
+) -> FastAPI:
     app = FastAPI(
         title="DualPrivilege-Airgap demo", docs_url="/api/docs", openapi_url="/api/openapi.json"
     )
@@ -247,11 +338,30 @@ def create_app(results_path: Path = DEFAULT_RESULTS, web_dir: Path = DEFAULT_WEB
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.get("/api/results/runs")
+    def result_runs() -> dict[str, Any]:
+        found = _result_runs(results_path, published_dir)
+        runs = [_run_info(run_id, path, invalid) for run_id, (path, invalid) in found.items()]
+        readable = {r["id"] for r in runs if r["error"] is None}
+        default = next((r for r in DEFAULT_RUNS if r in readable), None)
+        if default is None:
+            default = next(
+                (r["id"] for r in runs if r["id"] in readable and not r["invalid"]), None
+            )
+        return {"default": default, "runs": runs}
+
     @app.get("/api/results")
-    def results() -> dict[str, Any]:
-        if not results_path.is_file():
-            raise HTTPException(404, f"no saved eval at {results_path}; run `airgap eval` first")
-        return summarize_results(json.loads(results_path.read_text()))
+    def results(run: str | None = None) -> dict[str, Any]:
+        if run is None:
+            if not results_path.is_file():
+                raise HTTPException(
+                    404, f"no saved eval at {results_path}; run `airgap eval` first"
+                )
+            return summarize_results(json.loads(results_path.read_text()))
+        found = _result_runs(results_path, published_dir).get(run)
+        if found is None:
+            raise HTTPException(404, "unknown run; see GET /api/results/runs")
+        return summarize_results(json.loads(found[0].read_text()))
 
     @app.get("/{path:path}", include_in_schema=False)
     def ui(path: str) -> Any:

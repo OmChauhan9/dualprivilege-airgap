@@ -142,7 +142,9 @@ def serve(args: argparse.Namespace) -> None:
     from airgap.server.app import DEFAULT_WEB_DIR, create_app
 
     web_dir = Path(args.web_dir) if args.web_dir else DEFAULT_WEB_DIR
-    app = create_app(results_path=Path(args.results), web_dir=web_dir)
+    app = create_app(
+        results_path=Path(args.results), web_dir=web_dir, published_dir=Path(args.published)
+    )
     print(f"airgap console on http://{args.host}:{args.port}  (offline fake model by default)")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
@@ -202,6 +204,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--results", default="results/eval.json")
+    s.add_argument(
+        "--published",
+        default="results/published",
+        help="folder of published runs offered by the console's run picker",
+    )
     s.add_argument("--web-dir", default=None, help="built UI (default: web/dist in the repo)")
     s.set_defaults(func=serve)
     return parser

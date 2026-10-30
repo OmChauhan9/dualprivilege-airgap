@@ -175,6 +175,29 @@ export interface ResultsJson {
   leak_details: Record<string, LeakJson[]>;
 }
 
+/** One entry of GET /api/results/runs. */
+export interface RunJson {
+  /** Lookup key for GET /api/results?run=<id>: "eval", "published:<name>" or "invalid:<name>". */
+  id: string;
+  label: string;
+  file: string;
+  /** Kept under results/published/invalid/ so it is not hidden; never a valid result. */
+  invalid: boolean;
+  reason: string | null;
+  model: string | null;
+  simulated: boolean | null;
+  n_cases: number;
+  trials_per_case: number;
+  incomplete: boolean;
+  /** Set when the file could not be read; the other fields are then empty. */
+  error: string | null;
+}
+
+export interface RunsJson {
+  default: string | null;
+  runs: RunJson[];
+}
+
 export interface ReplayFile {
   simulated: boolean;
   model: string;

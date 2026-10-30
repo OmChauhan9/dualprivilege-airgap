@@ -1,4 +1,4 @@
-import type { Envelope, Provider, ReplayFile, ResultsJson, Scenario } from "./types";
+import type { Envelope, Provider, ReplayFile, ResultsJson, RunsJson, Scenario } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -31,9 +31,16 @@ export type ResultsState =
   | { status: "missing"; message: string }
   | { status: "error"; message: string };
 
-export async function fetchResults(): Promise<ResultsState> {
+export async function fetchRuns(): Promise<RunsJson> {
+  const resp = await fetch("/api/results/runs");
+  if (!resp.ok) throw new ApiError(resp.status, await detail(resp));
+  return (await resp.json()) as RunsJson;
+}
+
+/** One run's summary; with no id, the server's local results/eval.json. */
+export async function fetchResults(run?: string): Promise<ResultsState> {
   try {
-    const resp = await fetch("/api/results");
+    const resp = await fetch(run === undefined ? "/api/results" : `/api/results?${new URLSearchParams({ run })}`);
     if (resp.status === 404) return { status: "missing", message: await detail(resp) };
     if (!resp.ok) return { status: "error", message: await detail(resp) };
     return { status: "ok", data: (await resp.json()) as ResultsJson };
