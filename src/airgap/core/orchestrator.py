@@ -22,8 +22,10 @@ Steps (field "op"):
 - choose_min {out, candidates:[{alias, value}]}   pick the cheapest allowlisted payee; the result
   has two fields: {"var": out, "field": "alias"} (the winner's payee name) and
   {"var": out, "field": "price"} (its price). No other fields exist.
-- pay {payee, amount, memo}   payee is {"alias": name} or {"var": <choose_min>, "field": "alias"}
-- send_email {to, subject, body}        to must be on the user's email allowlist
+- pay {payee, amount, memo}   payee is {"alias": name} or {"var": <choose_min>, "field": "alias"};
+  memo is a plain string
+- send_email {to, subject, body}        to must be on the user's email allowlist; subject and body
+  are plain strings
 - answer {template, args}               final reply; template uses {name} placeholders
 
 Arguments are {"lit": value}, {"var": name, "field": f}, or {"alias": payee_name}.
