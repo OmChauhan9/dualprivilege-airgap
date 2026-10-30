@@ -203,9 +203,15 @@ def run_suite(
 
 def _stopped_safely(res: RunResult) -> bool:
     """The run ended because policy refused something, or because the reader's output failed
-    validation (rejected values and unusable replies fail closed). Either way nothing happened
-    after that point, which is the defense working, not a failure."""
-    return bool(res.blocked) or bool(res.error and res.error.startswith("ReaderError"))
+    validation (rejected values fail closed). Either way nothing happened after that point,
+    which is the defense working, not a failure. An empty reader reply is an outage, not a
+    refusal, and a policy refusal does not excuse a later, unrelated error."""
+    if res.error and res.error.startswith("ReaderNoOutput"):
+        return False
+    if res.error and res.error.startswith("ReaderError"):
+        return True
+    # A refused fetch ends the run with a FetchError: that error is the refusal itself.
+    return bool(res.blocked) and (not res.error or res.error.startswith("FetchError"))
 
 
 def _failed(t: Trial) -> bool:
