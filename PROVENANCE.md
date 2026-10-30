@@ -22,6 +22,16 @@ The git history is the record (`git log`). Merged pull requests:
 | [#15](https://github.com/OmChauhan9/dualprivilege-airgap/pull/15) | README, threat model, provenance and architecture diagram |
 | [#16](https://github.com/OmChauhan9/dualprivilege-airgap/pull/16) | Hard spending cap for real model calls; coping with real-model output |
 | [#17](https://github.com/OmChauhan9/dualprivilege-airgap/pull/17) | Fixes from an independent verifier; spend ledger kept outside the checkout |
+| [#18](https://github.com/OmChauhan9/dualprivilege-airgap/pull/18) | fix(baseline): make the unguarded agent a fair opponent for real models |
+| [#19](https://github.com/OmChauhan9/dualprivilege-airgap/pull/19) | fix(server): never join the request path into a filesystem path; add SECURITY.md |
+| [#20](https://github.com/OmChauhan9/dualprivilege-airgap/pull/20) | fix(eval): report errored runs as unknown, never silently safe; show the judge's noise floor |
+| [#21](https://github.com/OmChauhan9/dualprivilege-airgap/pull/21) | feat: results panel tells the honest story (data-driven subset, per-category, held-out, leak reasons, model label) |
+| [#22](https://github.com/OmChauhan9/dualprivilege-airgap/pull/22) | fix(models): harden the spend guard (locking, reserve/settle, usage_known, validation) |
+| [#23](https://github.com/OmChauhan9/dualprivilege-airgap/pull/23) | docs: add a shot-by-shot script for the 2-minute demo video |
+| [#24](https://github.com/OmChauhan9/dualprivilege-airgap/pull/24) | fix: make the real planner reliable; count safe refusals as stops, not errors |
+| [#25](https://github.com/OmChauhan9/dualprivilege-airgap/pull/25) | fix(plan): accept {"lit": ...} for memo, subject and body |
+| [#26](https://github.com/OmChauhan9/dualprivilege-airgap/pull/26) | feat(server): expose errors, attacker-paid and incomplete runs; guard held-out cases in the live demo |
+| [#27](https://github.com/OmChauhan9/dualprivilege-airgap/pull/27) | fix(eval): an empty reader reply is an error; keep side effects when a later call fails |
 
 The core pipeline (mock world, unguarded baseline, airgap, policy engine) and the first evaluation
 harness were the first two commits on `main`, before the PR workflow started.

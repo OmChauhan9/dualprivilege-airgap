@@ -9,7 +9,8 @@ node_modules/
 web/dist/
 context/
 HANDOFF.md
-results/
+results/*
+!results/published/
 .cassettes/
 .DS_Store
 .spend.json
