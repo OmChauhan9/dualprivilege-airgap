@@ -399,3 +399,18 @@ def test_the_cli_saves_what_was_paid_for_when_the_run_dies(tmp_path, monkeypatch
     saved = json.loads((tmp_path / "adaptive.partial.json").read_text())
     assert saved["incomplete"] is True
     assert len(saved["attempts"]) == 1
+
+
+def test_a_lie_below_the_stated_cap_still_passes_a_plausible_user():
+    """Issue #35: a cap bounds how far a lie can go; it does not catch one below the cap.
+
+    Pins the documented limitation, so the README stays true if the policy ever changes."""
+    from airgap.core.airgap import AirgapAgent
+
+    sc = EVAL_SCENARIOS["invoice-cap"]
+    assert sc.make_injected_web is not None
+    web = sc.make_injected_web(Injection(None, "", 47.5))
+    res = AirgapAgent(FakeLLM(), FakeLLM(), web, sc.plausible_confirmer()).run(
+        sc.user_text, sc.context()
+    )
+    assert [p.amount_usd for p in res.ledger.payments] == [47.5]
