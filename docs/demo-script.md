@@ -174,9 +174,12 @@ One command re-checks every test cited above:
 uv run pytest -q tests/test_pipeline.py::test_orchestrator_never_sees_page_content tests/test_units.py::test_fetcher_reports_redirect_origin_not_page_claims tests/test_units.py::test_sanitizer_strips_hidden_channel tests/test_units.py::test_reader_schemas_have_no_identity_or_destination_fields tests/test_campaigns.py::test_lookalike_wallet_never_becomes_the_payee tests/test_units.py::test_no_tainted_payee_ever_authorized tests/test_units.py::test_tainted_amount_needs_confirmation_only_after_untrusted_input tests/test_server.py::test_policy_events_carry_rule_ids_and_rule_of_two tests/test_attacks.py::test_valid_schema_value_over_the_limit_is_denied_by_p2 tests/test_eval.py::test_every_leak_is_published_and_every_published_leak_still_leaks tests/test_eval.py::test_strict_confirmation_trades_utility_for_safety tests/test_server.py::test_committed_replays_are_current tests/test_server.py::test_recorded_replay_matches_live_stream tests/test_server.py::test_meta_provider_is_refused_without_the_real_call_guard
 ```
 
-Things the video must not say, because the repo does not support them: that real models were
-tested or are robust; that any attack class is fully stopped; that adaptive attacks were tried;
-that it works on the real web (it is an in-process mock web with no TLS).
+Things the video must not say, because the repo does not support them: that real models are
+robust (one model, `muse-spark-1.3`, was tested, and data lies such as an inflated invoice amount
+still get through the default mode); that any attack class is fully stopped; that the 0/57
+held-out result means the pipeline is secure (see the README); that adaptive attackers cannot win
+(one small run beat the default mode on 6 of 10 scenarios, with the attacker's own wallet never
+paid); that it works on the real web (it is an in-process mock web with no TLS).
 
 ## 4. Fallback plan
 

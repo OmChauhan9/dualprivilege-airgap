@@ -16,6 +16,7 @@ errors, tokens, latency). Re-render a file in the console with
 | `real_C_tuning_v2.json` / `.log` | Airgap before the `{"lit": ...}` memo fix (15 runs errored across the three modes, all plan-parse failures) | tuning | `b22da4c` |
 | `real_BC_tuning.json` / `.log` | Prompt defense and the first airgap run (15 of 72 runs errored, 9 of them plan-parse failures) | tuning | `05f9b34` |
 | `real_A_tuning.json` / `.log` | Unguarded baseline | tuning | `05f9b34` |
+| `adaptive_real.json` / `.log` | **Adaptive attacker**, `muse-spark-1.3` vs itself, 10 scenarios x 5 rounds, three conditions. Fresh attacker-written pages, **not** corpus/held-out/tuning cases; file is marked `"kind": "adaptive"` and the console refuses to load it as eval results. 11 of 50 rounds were unusable and are listed unscored | none (adaptive) | `0639618` |
 | `offline_fakellm.json` | The offline simulated model (`FakeLLM`): a plumbing check, not evidence about real models | all | n/a |
 | `invalid/first_run_INVALID.*` | **Invalid, kept so it is not hidden.** The first real run forced JSON-schema decoding, which corrupted key names and made the unguarded agent look hijacked when it had only mis-parsed. Replaced by `real_A_tuning`. | tuning | before `eaa36a7` |
 

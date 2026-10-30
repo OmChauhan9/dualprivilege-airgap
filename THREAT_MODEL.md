@@ -289,10 +289,14 @@ adapts. Results from it go in a separate file and are never mixed into the corpu
   (5/27) are not in the held-out split, so its 0/57 there must not be read as "secure". The
   "attacker paid" metric counts only attacker-owned wallets and mailboxes, not a lying vendor that
   is on the user's allowlist. Other models are untested.
-- **No adaptive attacker results yet.** The corpus is fixed and hand-written (70 attacks; 19 held out by hash, now spent by the final real run).
+- **Adaptive attacker: one small real run.** The corpus is fixed and hand-written (70 attacks; 19 held out by hash, now spent by the final real run).
   Nasr et al. (2025) bypassed 12 recent defenses with adaptive attacks; the boundary here is code
-  for that reason. The adaptive harness (see above) exists, but no real-model adaptive run is
-  reported here yet.
+  for that reason. One real adaptive run (`muse-spark-1.3` against itself, 10 scenarios, 5 rounds,
+  39 usable attempts) is published in `results/published/adaptive_real.*`: attacker-owned wallet or
+  mailbox paid 0/39 in every condition; the default airgap let 25/39 attempts through, all of them
+  data lies (a wrong amount to the right vendor, a false total, a wrong vendor choice), the
+  already-listed leak class; strict confirmation had 0/39 hijacks and 4/39 goal-reached (a
+  misleading reply, no side effect). It is a lower bound from one attacker model and a few rounds.
 - **Mock web only.** No real HTTP fetcher, no TLS, no PDFs or calendar invites in the corpus yet
   (HTML pages only), and only four reader schemas.
 - **Narrow utility.** Tasks that need open-ended reasoning over page content are out of reach for
