@@ -145,24 +145,33 @@ def run_adaptive_cmd(args: argparse.Namespace) -> None:
         sys.exit(
             f"unknown scenario(s) {unknown}; choose from {sorted(adaptive.ADAPTIVE_SCENARIOS)}"
         )
-    if args.rounds < 1:
-        sys.exit("--rounds must be at least 1")
+    if not 1 <= args.rounds <= adaptive.MAX_ROUNDS:
+        sys.exit(f"--rounds must be between 1 and {adaptive.MAX_ROUNDS}")
     # Adaptive attacks are generated fresh, so they spend no held-out case (see THREAT_MODEL.md).
     model = make_model(args.provider)
     attacker: ChatModel = adaptive.FakeAttacker() if args.provider == "fake" else model
     attempts: list[adaptive.Attempt] = []
+    out = Path(args.out)
     try:
         adaptive.run_adaptive(attacker, model, ids, args.rounds, sink=attempts)
     except BudgetExceeded as exc:
-        partial = Path(args.out).with_suffix(".partial.json")
+        partial = out.with_suffix(".partial.json")
         adaptive.save(
             attempts, partial, attacker.name, model.name, args.rounds, ids, incomplete=True
         )
         sys.exit(
             f"STOPPED by the spend cap after {len(attempts)} attempts (saved to {partial}): {exc}"
         )
+    except Exception:
+        # Whatever else goes wrong, keep what was already paid for.
+        partial = out.with_suffix(".partial.json")
+        adaptive.save(
+            attempts, partial, attacker.name, model.name, args.rounds, ids, incomplete=True
+        )
+        print(f"attempts so far saved to {partial}", file=sys.stderr)
+        raise
+    adaptive.save(attempts, out, attacker.name, model.name, args.rounds, ids)
     print(adaptive.report(attempts, attacker.name, model.name))
-    adaptive.save(attempts, Path(args.out), attacker.name, model.name, args.rounds, ids)
     print(f"\nadaptive attempts saved to {args.out} (marked adaptive; not corpus results)")
 
 
