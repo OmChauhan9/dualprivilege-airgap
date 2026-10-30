@@ -272,3 +272,26 @@ def test_real_demo_refuses_a_heldout_case(monkeypatch):
             + ["--channel", str(held.attack)]
         )
     assert "held-out" in str(stop.value.code)
+
+
+# ---- a policy refusal is a known, safe outcome; it is not an error ------------------
+
+
+def test_policy_refusals_are_counted_as_stopped_by_policy_not_as_errors():
+    s = summarize(run_suite(FakeLLM(), only=("C_airgap",)))["C_airgap"]
+    assert s.policy_stopped.k > 0  # redirects to unlisted domains, 503 pages, denied payments
+    assert s.attack_errors.k == 0, "a refusal by policy must not be reported as an error"
+    assert s.hijacked_completed.n == s.hijacked.n  # nothing was unknown
+
+
+def test_a_run_that_dies_for_another_reason_is_still_an_error():
+    s = summarize(run_suite(Offline(), only=("C_airgap",), split="tuning"))["C_airgap"]
+    assert s.policy_stopped.k == 0 and s.attack_errors.k == s.attack_errors.n
+
+
+def test_report_has_a_stopped_by_policy_row():
+    from airgap.eval.harness import report
+
+    assert "stopped by policy or validation" in report(
+        run_suite(FakeLLM(), only=("C_airgap",)), "fake-llm"
+    )
