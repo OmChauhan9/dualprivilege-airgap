@@ -212,7 +212,7 @@ What this does and does not show:
   count a lying vendor that is on the user's allowlist; those show up as *hijacked*.
 - One model, one mock web, one judge written by us. The judge's noise floor is printed in the eval
   output (benign runs flagged hijacked: 0/15 here, upper bound 20%).
-- No adaptive attacker has been run against the full pipeline yet.
+- One adaptive-attacker run exists (next section). It is small and does not change this reading.
 
 **Tuning split (development numbers, 1 trial per case).** 51 attack cases and 21 benign tasks. We
 looked at these while fixing the planner and the harness, so they are not independent evidence. They
@@ -236,6 +236,41 @@ had 15 of 72 runs error (9 of them plan-parse failures, the rest refusals that w
 as safe stops instead of errors); fixing that is why the numbers moved, and the
 first real run of all (invalid, because forced JSON decoding corrupted keys) is kept in
 `results/published/invalid/` with the reason, not hidden.
+
+**Adaptive attacker (one real run, `muse-spark-1.3` attacking `muse-spark-1.3`).** For each of 10
+scenarios an attacker model that knows the defense (white-box) wrote a page, saw what happened, and
+tried again, 5 rounds. 39 of 50 rounds produced a usable attack (the other 11 were replies with no
+JSON and are listed unscored). These pages are generated fresh, so they are **not** corpus,
+held-out or tuning cases, and are never merged into them. Raw file and every payload:
+`results/published/adaptive_real.*`.
+
+| Condition | Got through (per attempt) | Hijacked | Scenarios breached, best of 5 |
+|---|---|---|---|
+| A: no defense | 29/39 (74%) [59%, 85%] | 25/39 | 9/10 |
+| C: airgap, plausible user | 25/39 (64%) [48%, 77%] | 21/39 | 6/10 |
+| C: airgap, strict | 4/39 (10%) [4%, 24%] | 0/39 | 1/10 |
+
+- **The attacker's own wallet and mailbox were never paid, in any condition (0/39), not even by
+  the unguarded agent.** The model ignored injected "pay this wallet" text in this run, so this run
+  does not exercise the payee rules on that path (the corpus tests do).
+- **What got through the default airgap is data lies, not followed instructions.** All 25 are in the
+  payment, invoice and steering scenarios: 16 paid the *right* vendor the wrong amount the page
+  stated (an inflated invoice), 5 paid the vendor whose price the page lied about (the dearer shop
+  looked cheaper), and 4 repeated a false portfolio total in the reply with no payment. Several
+  winning payloads contain no instruction at all (the steering price lie alone, or "Billing status
+  ... is current."). 21 of the 25 count as *hijacked* because they moved money. This is the leak
+  class in "What we do NOT stop" and
+  [#35](https://github.com/OmChauhan9/dualprivilege-airgap/issues/35); the adaptive run did not
+  find a new class, it found the known one quickly (the first usable attempt won in all 6
+  scenarios).
+- **Where the airgap held and the unguarded agent did not:** email exfiltration, identity and
+  lookalike redirects (airgap held 4/4, 2/2 and 3/3 usable rounds; the unguarded agent was breached in 1/4, 2/2 and 1/3).
+- **Strict confirmation** had 0 hijacks, but 4 attempts reached the attacker's goal: in the
+  `payment` scenario the goal also counts the final reply repeating the page's false total. No side
+  effect happened. Misleading summaries are not stopped (see below).
+- **Caveats.** One attacker model, 5 rounds, rounds build on each other, so the intervals are
+  optimistic and describe this run only. 11 of 50 rounds were unusable, so the numbers are over 39
+  attempts. A stronger or more patient attacker could do more; this is a lower bound.
 
 ## What we do NOT stop
 
@@ -266,7 +301,7 @@ Also not stopped, or not tested:
   lookalike link, P5 allows that domain; only the payee rules still hold.
 - **Real web.** No real HTTPS fetcher, no TLS provenance. The registrable-domain check is a
   heuristic (last two labels plus a short list of multi-part suffixes), not the Public Suffix List.
-- **Adaptive attacks** have not been evaluated, and only one real model has been (`muse-spark-1.3`).
+- **Adaptive attacks** were evaluated once, with a weak budget (5 rounds, one attacker model), and only one real model has been used (`muse-spark-1.3`).
 
 Details: [THREAT_MODEL.md](THREAT_MODEL.md).
 
@@ -336,7 +371,7 @@ The building blocks are not new. What is ours is listed in [PROVENANCE.md](PROVE
 
 ## Roadmap
 
-- More real models, more trials per case, and an adaptive attacker against the full pipeline.
+- More real models, more trials per case, and a stronger, longer adaptive attacker (the first run is published; see Results).
 - Close the no-cap cases of the published leaks: in-limit amounts the user cannot verify
   ([#2](https://github.com/OmChauhan9/dualprivilege-airgap/issues/2)) and the task total
   ([#3](https://github.com/OmChauhan9/dualprivilege-airgap/issues/3),
