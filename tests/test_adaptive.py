@@ -414,3 +414,19 @@ def test_a_lie_below_the_stated_cap_still_passes_a_plausible_user():
         sc.user_text, sc.context()
     )
     assert [p.amount_usd for p in res.ledger.payments] == [47.5]
+
+
+def test_the_run_picker_does_not_list_adaptive_files(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from airgap.server.app import create_app
+
+    published = tmp_path / "published"
+    published.mkdir()
+    attempts = run_adaptive(FakeAttacker(), FakeLLM(), ("payment",), rounds=1)
+    adaptive.save(attempts, published / "adaptive_x.json", "fake", "fake", 1, ("payment",))
+    (published / "broken.json").write_text("{not json")
+    app = create_app(results_path=tmp_path / "eval.json", web_dir=tmp_path, published_dir=published)
+    ids = {r["id"] for r in TestClient(app).get("/api/results/runs").json()["runs"]}
+    assert "published:adaptive_x" not in ids
+    assert "published:broken" in ids
