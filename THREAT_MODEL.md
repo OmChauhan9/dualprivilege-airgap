@@ -67,7 +67,7 @@ code. Cannot read the agent's memory or intercept its traffic.
 | User text, allowlists, limits (`UserContext`) | trusted | The user's own channel |
 | Orchestrator (LLM) | trusted input only | `plan()` takes the user text and `UserContext`; it never receives page content, reader output or runtime errors |
 | Plan validator, interpreter, policy engine | trusted code | Plain code; this is the boundary ([ADR 0001](docs/adr/0001-policy-engine-is-the-boundary.md)) |
-| Fetcher | trusted code, untrusted output | Its provenance (registrable domain, redirect chain, status) is a fact the page cannot set; the body is untrusted |
+| Fetcher | trusted code, untrusted output | Its provenance (registrable domain, redirect chain, status) is a fact the page cannot set; the body is untrusted. A page that declares a charset browsers would decode differently (EBCDIC, UTF-16, UTF-7) is refused, so the sanitizer parses the same markup a browser renders |
 | Sanitizer | trusted code, untrusted output | Reduces hidden channels; not a guarantee |
 | Reader (LLM) | untrusted | It reads attacker text. No tools, no network; output must match a flat schema; every value is tainted with the origin domain |
 | Confirmation gate | the user | Strength depends on how attentive the user is; we report three modes |
