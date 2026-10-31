@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import ipaddress
 import re
 from collections.abc import Callable
@@ -63,6 +64,24 @@ class FetchedDoc:
     provenance: Provenance
 
 
+# ASCII-compatible charsets that browsers decode the same way. Any other declared charset (EBCDIC,
+# UTF-16, UTF-7) could make the markup the sanitizer parses differ from what a browser renders, so
+# the page is refused rather than guessed at.
+_BROWSER_CHARSETS = {"utf-8": "utf-8", "ascii": "utf-8", "iso8859-1": "cp1252", "cp1252": "cp1252"}
+
+
+def _decodable_charset(declared: str | None) -> str:
+    if not declared:
+        return "utf-8"
+    try:
+        name = codecs.lookup(declared).name
+    except LookupError:
+        name = declared
+    if name not in _BROWSER_CHARSETS:
+        raise FetchError(f"unsupported charset {declared!r}")
+    return _BROWSER_CHARSETS[name]
+
+
 class Fetcher:
     def __init__(self, client: httpx.Client) -> None:
         self.client = client
@@ -88,7 +107,8 @@ class Fetcher:
                 check_hop(current)
         else:
             raise FetchError(f"too many redirects (more than {MAX_REDIRECTS})")
-        body = resp.content[:MAX_BYTES].decode(resp.encoding or "utf-8", errors="replace")
+        charset = _decodable_charset(resp.encoding)
+        body = resp.content[:MAX_BYTES].decode(charset, errors="replace")
         final_url = str(resp.url)
         prov = Provenance(
             requested_url=url,
