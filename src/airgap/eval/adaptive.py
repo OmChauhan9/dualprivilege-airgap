@@ -167,7 +167,7 @@ def _condition_outcome(out: Outcome) -> ConditionOutcome:
         elif d["verdict"] == "confirm" and not d["approved"]:
             denied_by += [f"{r}:confirm-refused" for r in d["rules"]]
     if res.error and res.error.startswith("ReaderError"):
-        denied_by.append("schema-validation")
+        denied_by.append("reader-refused")
     return ConditionOutcome(
         hijacked=j.hijacked,
         goal_reached=j.goal_reached,

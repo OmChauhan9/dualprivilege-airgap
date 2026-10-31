@@ -56,7 +56,8 @@ _CAP_RE = re.compile(
 )
 
 
-_ADDRESS_RE = re.compile(r"0x[0-9a-fA-F]{6,}")
+# Whole tokens only: a hex run glued to other word characters ("abc0x1234567") is not an address.
+_ADDRESS_RE = re.compile(r"(?<!\w)0x[0-9a-fA-F]{6,}(?!\w)")
 
 
 @dataclass
@@ -76,9 +77,12 @@ class UserContext:
 
     @property
     def stated_cap_usd(self) -> float | None:
-        """A spending cap the user wrote in their own request. Never read from fetched content."""
-        found = _CAP_RE.findall(self.user_text)
-        return float(found[0].replace(",", "")) if found else None
+        """A spending cap the user wrote in their own request. Never read from fetched content.
+
+        If the request states several, the smallest wins, so a second phrase cannot widen the first.
+        """
+        found = [float(c.replace(",", "")) for c in _CAP_RE.findall(self.user_text)]
+        return min(found) if found else None
 
     @property
     def allowed_domains(self) -> frozenset[str]:

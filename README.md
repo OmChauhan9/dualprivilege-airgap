@@ -299,8 +299,9 @@ Also not stopped, or not tested:
   reason.
 - **Inattentive approval.** With approve-all, an inflated amount to the real payee goes through
   (`identity:inflated_visible`, `lookalike:lookalike_inflated`).
-- **Error text echoes attacker strings to the user.** A schema-validation error can quote a page
-  value (`identity:error_echo`). It never reaches the orchestrator, but it is shown in the reply.
+- **Error text can still name an attacker-chosen host.** Reader validation errors no longer quote
+  page values (`identity:error_echo`, fixed in the input-hardening change), but an error such as a
+  redirect to an unlisted domain can still show the host the page chose.
 - **Text-to-user attacks and phishing.** Answers can carry page-derived values. If the user opens a
   lookalike link, P5 allows that domain; only the payee rules still hold.
 - **Real web.** No real HTTPS fetcher, no TLS provenance. The registrable-domain check is a
@@ -389,7 +390,7 @@ The building blocks are not new. What is ours is listed in [PROVENANCE.md](PROVE
   ([#3](https://github.com/OmChauhan9/dualprivilege-airgap/issues/3),
   [#35](https://github.com/OmChauhan9/dualprivilege-airgap/issues/35)). A stated cap only bounds
   how far a lie can go; the corpus cap cases use lies above the cap.
-- Keep attacker text out of error messages shown to the user.
+- Keep attacker-chosen host names out of fetch and redirect error messages shown to the user.
 - A real HTTPS fetcher with TLS provenance and the Public Suffix List.
 - More reader schemas and plan operations, with the utility cost reported next to attack success.
 
