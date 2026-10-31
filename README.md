@@ -294,9 +294,11 @@ Also not stopped, or not tested:
   above the per-transaction limit protects less than no cap.
 - **Domain identity is a heuristic.** IP addresses are their own site, but cloud-hosting suffixes
   (`*.github.io`, `*.amazonaws.com`) count as one site, and the Public Suffix List is not used.
-- **The sanitizer is attack-surface reduction.** It strips inline-style hiding tricks, not rules in
-  a `<style>` block or class-based CSS; the reader and the policy engine sit behind it for that
-  reason.
+- **The sanitizer is attack-surface reduction.** It parses inline `style` and presentation
+  attributes (so comments, escapes, `!important` and unit spellings do not hide a trick), but it
+  does not evaluate rules in a `<style>` block or class-based CSS. White text with no inline
+  background counts as hidden, because a page with none renders white. The reader and the policy
+  engine sit behind it for these reasons.
 - **Inattentive approval.** With approve-all, an inflated amount to the real payee goes through
   (`identity:inflated_visible`, `lookalike:lookalike_inflated`).
 - **Error text can still name an attacker-chosen host.** Reader validation errors no longer quote
