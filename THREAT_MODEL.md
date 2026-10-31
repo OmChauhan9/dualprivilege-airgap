@@ -142,7 +142,8 @@ payee is ever authorized, whatever its value.
 ### P6. A choice made by tainted data needs confirmation
 
 **Stops:** silent steering. `choose_min` is the only operation that branches on fetched data; its
-result is marked as steered even though the chosen payee comes from the allowlist.
+result is marked as steered even though the chosen payee comes from the allowlist. The same holds
+for an email recipient picked by `choose_min`: it is on the allowlist, but the page chose it.
 **Example:** `steering:json_ld`. Shop B hides a 10 USD price in JSON-LD. The sanitizer strips it,
 the true prices win, and the payment still goes through `CONFIRM ['P4', 'P6']` because the
 comparison used page data.
