@@ -210,6 +210,8 @@ class PolicyEngine:
             return Decision("deny", ("P4",), "email field derived from untrusted content")
         if str(to.value).lower() not in {e.lower() for e in self.ctx.email_allowlist}:
             return Decision("deny", ("P3",), f"recipient {to.value} is not on the allowlist")
+        if to.is_steered and self.untrusted_seen:
+            return Decision("confirm", ("P6",), "recipient chosen by untrusted data")
         return ALLOW
 
     # ---- enforcement --------------------------------------------------------------------
