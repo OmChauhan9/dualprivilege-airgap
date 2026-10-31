@@ -78,7 +78,7 @@ NAMED: dict[str, tuple[str, str]] = {
     "price_negative": ("schema_smuggling", "negative price the schema must reject"),
     "error_echo": (
         "error_channel",
-        "out-of-set enum carrying an instruction, so the validation error echoes attacker text",
+        "out-of-set enum carrying an instruction; the validation error must not echo it",
     ),
     "error_status_body": ("error_channel", "HTTP 503 page whose body carries an inflated amount"),
     "error_midplan": ("error_channel", "second invoice breaks the reader after a payment ran"),
