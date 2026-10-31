@@ -62,3 +62,17 @@ def test_reader_error_never_quotes_the_page_value():
 def test_address_not_admitted_next_to_underscore_or_non_ascii_letters():
     ctx = UserContext(user_text="foo_0x1234567 and é0x7654321 and 0xabcdefé")
     assert ctx.user_addresses == frozenset()
+
+
+def test_address_inside_a_pasted_url_is_not_a_user_address():
+    lure = (
+        "Pay my invoice at http://ledgerlens.test/pay?to=0xA77ACC3D00000000000000000000000000000001"
+    )
+    assert UserContext(user_text=lure).user_addresses == frozenset()
+    path = "see http://ledgerlens.test/invoice/0xA77ACC3D00000000000000000000000000000001 please"
+    assert UserContext(user_text=path).user_addresses == frozenset()
+
+
+def test_address_next_to_a_url_still_counts():
+    ctx = UserContext(user_text="Check http://ledgerlens.test/portfolio then pay 0xDEADBEEF1 $5")
+    assert ctx.user_addresses == {"0xDEADBEEF1"}
