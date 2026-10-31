@@ -228,8 +228,8 @@ Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
 - **Replies after a denial.** The plan's reply is drafted before anything runs. If policy denies a
   payment or email, the interpreter withholds that reply and shows a code-written line naming only
   the action and rule ("pay denied by P2"), never page text, so a page cannot make the user
-  believe a bill was paid. A run that fails for another reason shows its error, which can quote
-  attacker text (see error echo).
+  believe a bill was paid. A run that fails for another reason shows its error, which can name a
+  host the page chose (see error text); reader validation errors never quote page text.
 - **Non-finite and odd values.** NaN and infinite amounts are denied, and any unexpected exception
   in the interpreter fails the run closed.
 - **Allowlist compromise.** The allowlist is the root of trust for payees. If an attacker gets an

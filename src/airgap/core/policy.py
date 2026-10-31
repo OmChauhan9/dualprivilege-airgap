@@ -56,8 +56,8 @@ _CAP_RE = re.compile(
 )
 
 
-# Whole tokens only: a hex run glued to other letters or digits ("abc0x1234567") is not an address.
-_ADDRESS_RE = re.compile(r"(?<![0-9A-Za-z])0x[0-9a-fA-F]{6,}(?![0-9A-Za-z])")
+# Whole tokens only: a hex run glued to other word characters ("abc0x1234567") is not an address.
+_ADDRESS_RE = re.compile(r"(?<!\w)0x[0-9a-fA-F]{6,}(?!\w)")
 
 
 @dataclass

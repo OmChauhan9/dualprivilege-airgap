@@ -57,3 +57,8 @@ def test_reader_error_never_quotes_the_page_value():
     with pytest.raises(ReaderError) as info:
         Reader(Bad()).read("page", "BillingInfo", "ledgerlens.test")
     assert "IGNORE" not in str(info.value)
+
+
+def test_address_not_admitted_next_to_underscore_or_non_ascii_letters():
+    ctx = UserContext(user_text="foo_0x1234567 and é0x7654321 and 0xabcdefé")
+    assert ctx.user_addresses == frozenset()

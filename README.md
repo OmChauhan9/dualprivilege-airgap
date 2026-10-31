@@ -390,7 +390,7 @@ The building blocks are not new. What is ours is listed in [PROVENANCE.md](PROVE
   ([#3](https://github.com/OmChauhan9/dualprivilege-airgap/issues/3),
   [#35](https://github.com/OmChauhan9/dualprivilege-airgap/issues/35)). A stated cap only bounds
   how far a lie can go; the corpus cap cases use lies above the cap.
-- Keep attacker text out of error messages shown to the user.
+- Keep attacker-chosen host names out of fetch and redirect error messages shown to the user.
 - A real HTTPS fetcher with TLS provenance and the Public Suffix List.
 - More reader schemas and plan operations, with the utility cost reported next to attack success.
 
