@@ -21,7 +21,7 @@ assets are:
 ## Attacker
 
 **Can:** control any content the agent fetches. That includes visible HTML, hidden text (CSS
-`display:none`, white-on-white, off-screen, tiny font, comments, zero-width characters), metadata
+`display:none`, white-on-white, off-screen, tiny font, comments, zero-width and other invisible characters), metadata
 (`<meta>`, Open Graph, JSON-LD), alt text, PDFs, calendar invites, API responses, HTTP status codes
 and redirects. The attacker can register lookalike domains, and can get the user to open one.
 

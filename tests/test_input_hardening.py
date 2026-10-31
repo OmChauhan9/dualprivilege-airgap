@@ -62,3 +62,10 @@ def test_reader_error_never_quotes_the_page_value():
 def test_address_not_admitted_next_to_underscore_or_non_ascii_letters():
     ctx = UserContext(user_text="foo_0x1234567 and é0x7654321 and 0xabcdefé")
     assert ctx.user_addresses == frozenset()
+
+
+@pytest.mark.parametrize("code", [0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x2800, 0x3164, 0xFFA0])
+def test_invisible_non_cf_characters_are_stripped(code):
+    res = sanitize(f"<p>a{chr(code) * 5}b</p>")
+    assert res.text == "ab"
+    assert any(r.channel == "zero_width_chars" for r in res.removed)

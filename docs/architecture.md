@@ -79,7 +79,7 @@ flowchart TB
    redirects by hand, so every hop is checked before it is requested (P5). It records the
    registrable domain, the redirect chain and the status. Non-2xx responses are never read (P7).
 4. **Sanitize.** Scripts, JSON-LD, `<meta>`, comments, `alt` text, CSS-hidden elements and
-   zero-width characters are removed. This shrinks the attack surface; it is not the boundary.
+   zero-width and other invisible characters are removed. This shrinks the attack surface; it is not the boundary.
    Visible text passes through on purpose.
 5. **Read.** The reader turns the text into one of four flat schemas (`PortfolioSummary`,
    `InboxDigest`, `BillingInfo`, `PriceQuote`). None of them has a payee, recipient, URL or

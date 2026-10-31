@@ -12,11 +12,15 @@ from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, Comment, Tag
 
+# Invisible characters outside category Cf: they render as nothing (or as blank filler) and can
+# encode hidden bits between visible words. Variation selectors, the combining grapheme joiner,
+# the Khmer inherent vowels, the Hangul fillers and the braille blank.
+_INVISIBLE = frozenset({0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x2800, 0x3164, 0xFFA0})
 
-def _is_variation_selector(ch: str) -> bool:
-    """Variation selectors are category Mn, not Cf, yet carry no visible text and can hide bytes."""
+
+def _is_invisible(ch: str) -> bool:
     code = ord(ch)
-    return 0xFE00 <= code <= 0xFE0F or 0xE0100 <= code <= 0xE01EF
+    return code in _INVISIBLE or 0xFE00 <= code <= 0xFE0F or 0xE0100 <= code <= 0xE01EF
 
 
 _HIDDEN_STYLE = [
@@ -106,7 +110,7 @@ def sanitize(html: str) -> SanitizeResult:
     text = body.get_text(" ")
     text = unicodedata.normalize("NFKC", text)
     stripped = "".join(
-        ch for ch in text if unicodedata.category(ch) != "Cf" and not _is_variation_selector(ch)
+        ch for ch in text if unicodedata.category(ch) != "Cf" and not _is_invisible(ch)
     )
     if stripped != text:
         removed.append(Removal("zero_width_chars", f"{len(text) - len(stripped)} chars"))
