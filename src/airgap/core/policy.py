@@ -72,8 +72,12 @@ class UserContext:
 
     @property
     def user_addresses(self) -> frozenset[str]:
-        """Whole addresses the user wrote in their own message (exact match, not substrings)."""
-        return frozenset(_ADDRESS_RE.findall(self.user_text))
+        """Whole addresses the user wrote in their own message (exact match, not substrings).
+
+        An address inside a URL the user pasted does not count: a lure link can carry a wallet the
+        user never meant to name.
+        """
+        return frozenset(_ADDRESS_RE.findall(URL_RE.sub(" ", self.user_text)))
 
     @property
     def stated_cap_usd(self) -> float | None:

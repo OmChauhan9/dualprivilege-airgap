@@ -91,6 +91,8 @@ to the saved address. The test `test_lookalike_wallet_never_becomes_the_payee` c
 with approve-all.
 **Exact match:** an address the user wrote counts only as a whole `0x...` token. A fragment, an
 empty string or a word from the request does not (`test_p1_rejects_fragments_and_near_misses...`).
+An address inside a URL the user pasted does not count either, so a lure link such as
+`http://.../pay?to=0x...` cannot make its wallet a valid payee.
 **Note:** in the offline corpus P1 never fires at runtime, because the orchestrator never sees an
 attacker address to copy. It is enforced twice as a backstop: statically in `validate_plan`, and at
 runtime in `check_pay` (`test_p1_unlisted_payee_denied`).
