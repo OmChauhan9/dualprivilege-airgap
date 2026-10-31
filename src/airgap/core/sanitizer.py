@@ -12,6 +12,13 @@ from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, Comment, Tag
 
+
+def _is_variation_selector(ch: str) -> bool:
+    """Variation selectors are category Mn, not Cf, yet carry no visible text and can hide bytes."""
+    code = ord(ch)
+    return 0xFE00 <= code <= 0xFE0F or 0xE0100 <= code <= 0xE01EF
+
+
 _HIDDEN_STYLE = [
     ("css_display_none", re.compile(r"display\s*:\s*none", re.I)),
     ("css_visibility_hidden", re.compile(r"visibility\s*:\s*hidden", re.I)),
@@ -98,7 +105,9 @@ def sanitize(html: str) -> SanitizeResult:
         title.decompose()
     text = body.get_text(" ")
     text = unicodedata.normalize("NFKC", text)
-    stripped = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    stripped = "".join(
+        ch for ch in text if unicodedata.category(ch) != "Cf" and not _is_variation_selector(ch)
+    )
     if stripped != text:
         removed.append(Removal("zero_width_chars", f"{len(text) - len(stripped)} chars"))
     text = " ".join(stripped.split())

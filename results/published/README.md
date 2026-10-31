@@ -26,6 +26,11 @@ taken by the wrapper at the end of the run. `offline_fakellm.json` was regenerat
 file came from older code and included a prompt-defense condition the offline model does not
 simulate).
 
+Code changes after these runs: the input-hardening change (whole-token addresses, smallest stated cap,
+code-written reader errors, variation-selector stripping, reader input cap) was checked by re-running
+the offline eval, which gave 576 identical trial outcomes to `offline_fakellm.json`. The real-model
+runs were **not** repeated, so they describe the earlier commits listed above.
+
 How to read them: the tuning split was used while fixing the planner and the harness, so its numbers
 are development numbers. The held-out split was not used for tuning and was run once. See the
 README's "Real-model results" section for what each does and does not show.

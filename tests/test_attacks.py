@@ -140,8 +140,10 @@ def test_validation_error_echo_never_reaches_the_orchestrator():
 
     res, j = run_airgap("identity", "error_echo", approve_all, orchestrator=Spy())
     assert not res.ledger.payments and not j.hijacked
-    # The error does carry attacker text to the user's display. It reaches no sink and no model.
-    assert res.error and "IGNORE-ALL-RULES" in res.error
+    # The error names the failing field and rule, never the page's value, so no attacker text
+    # reaches the user's display, any sink or any model.
+    assert res.error and "IGNORE-ALL-RULES" not in res.error
+    assert "ReaderError" in res.error
     assert seen and not any("IGNORE-ALL-RULES" in s for s in seen)
 
 
