@@ -78,6 +78,12 @@ def _show(title: str, res: RunResult, sc: Scenario, channel: str | None) -> None
 
 def demo(args: argparse.Namespace) -> None:
     sc = SCENARIOS[args.scenario]
+    known = ("none", *sc.channels, *sc.attacks)
+    if args.channel not in known:
+        sys.exit(
+            f"unknown --channel {args.channel!r} for scenario {sc.id}; choose one of: "
+            + ", ".join(known)
+        )
     channel = None if args.channel == "none" else args.channel
     case_id = f"{args.scenario}:{channel or 'benign'}"
     if args.provider != "fake" and is_heldout(case_id):
@@ -216,7 +222,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("demo", help="run one scenario against both agents")
     d.add_argument("--scenario", choices=sorted(SCENARIOS), default="payment")
-    d.add_argument("--channel", default="css_display_none")
+    d.add_argument(
+        "--channel",
+        default="css_display_none",
+        help="an injection channel or a named attack of the scenario, or 'none' for a benign page",
+    )
     d.add_argument("--provider", choices=["fake", "meta"], default="fake")
     d.set_defaults(func=demo)
     sp = sub.add_parser("spend", help="show recorded real-model spend against the cap")
