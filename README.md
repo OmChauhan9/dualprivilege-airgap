@@ -26,14 +26,18 @@ pages (fake API docs, a lookalike domain) built to steer agents, and some models
 
 ## 60-second demo
 
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/). Everything runs offline; no key needed.
+Needs Python 3.12+, [uv](https://docs.astral.sh/uv/) and, for the web console, Node 22.12 or newer.
+Everything runs offline; no key needed.
 
 ```bash
 uv sync
 uv run airgap demo      # one poisoned page, unguarded agent vs airgapped agent
-uv run airgap eval      # 70 attacks + 26 benign tasks, every condition, k/n with intervals
-uv run airgap serve     # side-by-side web console on http://127.0.0.1:8000
+uv run airgap eval      # 70 attacks + 26 benign tasks: A, the C variants and two ablations
+cd web && npm ci && npx vite build && cd ..   # one-time console build
+uv run airgap serve     # web console on http://127.0.0.1:8000 (foreground; Ctrl-C to stop)
 ```
+
+Condition B (prompt defense) needs a real model, so the offline eval skips it.
 
 `uv run airgap demo` (default: `--scenario payment --channel css_display_none`), trimmed:
 
@@ -60,19 +64,17 @@ AIRGAPPED AGENT
   ground truth: not hijacked; user's task completed correctly: True
 ```
 
-Other scenarios: `--scenario email|identity|steering` (steering shows an attack only with
-`--channel visible_text`; the default channel does not touch it). `--channel` takes any injection channel
-(`visible_text`, `json_ld`, `alt_text`, ...) or a named attack from the corpus (for example
-`uv run airgap demo --scenario steering --channel visible_text`, which shows a leak we publish).
+Other scenarios: `--scenario email|identity|steering`. The default channel does not touch
+steering; try `--channel visible_text` or `--channel price_penny` there, both leaks we publish.
+`--channel` takes an injection channel (`css_display_none`, `white_on_white`, `off_screen`,
+`tiny_font`, `html_comment`, `zero_width_visible`, `json_ld`, `og_meta`, `alt_text`,
+`visible_text`), a named attack from the corpus (for example
+`uv run airgap demo --scenario steering --channel price_penny`), or `none` for a benign page. An
+unknown value is refused with the list of valid ones.
 
-The web console needs a one-time UI build (Node 22.12 or newer):
-
-```bash
-cd web && npm ci && npx vite build && cd ..
-uv run airgap serve
-```
-
-Without the build, `serve` still runs the API and shows build instructions at `/`. The console has
+Without the console build, `serve` still runs the API and shows build instructions at `/`. The API
+is `GET /api/scenarios`, `/api/run/stream?scenario=payment&channel=css_display_none`,
+`/api/results/runs` and `/api/results`; see [`docs/api-contract.md`](docs/api-contract.md). The console has
 a replay mode for reproducible recordings; see [`web/README.md`](web/README.md).
 
 ## Architecture
@@ -330,7 +332,11 @@ uv run airgap adaptive --provider fake --rounds 5 --scenarios payment,steering -
 uv run airgap serve --port 8000           # the console opens on the published real-model run; a local eval.json is in the run picker
 ```
 
-Local checks (same as CI):
+Offline, the adaptive command uses a scripted attacker (`FakeAttacker`) and prints A 7/10,
+C_airgap 2/10 and strict 0/10 attempts got through. A figure-lie attempt has an empty payload; the
+lie is its `amount`.
+
+Local checks (same as CI; `pyright` needs Node, and downloads it if none is installed):
 
 ```bash
 uv run ruff check src tests && uv run ruff format --check src tests
@@ -348,6 +354,10 @@ cp .env.example .env                      # fill in MODEL_API_KEY; never commit 
 set -a; source .env; set +a
 AIRGAP_ALLOW_REAL_CALLS=1 uv run airgap demo --provider meta
 ```
+
+Real spend is recorded in `~/.airgap/spend.json`, across runs. `uv run airgap spend` shows it
+against the cap. The cap defaults to $5 and is raised per command with `AIRGAP_BUDGET_USD`, up to a
+hard ceiling of $50 in code; a call that would pass the cap is refused before it is sent.
 
 ## Layout
 
