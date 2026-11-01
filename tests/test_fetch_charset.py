@@ -62,3 +62,13 @@ def test_a_utf8_byte_order_mark_is_dropped():
 def test_an_unknown_header_charset_is_refused():
     with pytest.raises(FetchError, match="unsupported charset"):
         _fetch(b"<p>hi</p>", "text/html; charset=no-such-charset")
+
+
+def test_a_meta_tag_inside_a_comment_is_ignored_like_a_browser_does():
+    page = b'<!-- <meta charset="utf-8"> --><meta charset="iso-2022-jp"><p>x</p>'
+    with pytest.raises(FetchError, match="unsupported charset"):
+        _fetch(page, "text/html")
+
+
+def test_us_ascii_is_decoded_as_windows_1252():
+    assert "€" in _fetch(b"<p>\x80</p>", "text/html; charset=us-ascii")

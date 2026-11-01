@@ -68,9 +68,11 @@ class FetchedDoc:
 # byte-order mark first, then the Content-Type header, then a <meta> tag in the first 1024 bytes.
 # Any other charset (EBCDIC, UTF-16, UTF-7, ISO-2022) could make the markup the sanitizer parses
 # differ from what a browser renders, so the page is refused rather than guessed at.
-_BROWSER_CHARSETS = {"utf-8": "utf-8", "ascii": "utf-8", "iso8859-1": "cp1252", "cp1252": "cp1252"}
+# Browsers decode ASCII and ISO-8859-1 labels as windows-1252 (WHATWG Encoding Standard).
+_BROWSER_CHARSETS = {"utf-8": "utf-8", "ascii": "cp1252", "iso8859-1": "cp1252", "cp1252": "cp1252"}
 _UTF8_BOM = b"\xef\xbb\xbf"
 _OTHER_BOMS = (b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff", b"+/v")
+_HTML_COMMENT = re.compile(rb"<!--.*?(?:-->|$)", re.S)
 _META_CHARSET = re.compile(rb"""<meta[^>]*?charset\s*=\s*["']?\s*([^\s"'>;/]+)""", re.I)
 
 
@@ -81,7 +83,7 @@ def _decodable_charset(header_charset: str | None, body: bytes) -> str:
         raise FetchError("unsupported charset: the page starts with a non-UTF-8 byte-order mark")
     declared = header_charset
     if not declared:
-        meta = _META_CHARSET.search(body[:1024])
+        meta = _META_CHARSET.search(_HTML_COMMENT.sub(b"", body[:1024]))  # browsers skip comments
         declared = meta.group(1).decode("ascii", "replace") if meta else None
     if not declared:
         return "utf-8"
