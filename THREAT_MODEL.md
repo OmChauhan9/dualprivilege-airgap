@@ -4,8 +4,8 @@ What DualPrivilege-Airgap defends against, how, and where it does not. Terms fol
 [`GLOSSARY.md`](GLOSSARY.md). The design is in [`docs/architecture.md`](docs/architecture.md).
 
 Most numbers cited here come from the offline `FakeLLM`, a hand-written simulation, and each says
-so. Real-model numbers say "real model". It shows that
-the code enforces what this document says. It is not evidence about real models. We have also run
+so. Real-model numbers say "real model". The `FakeLLM` numbers show that the code enforces what
+this document says. They are not evidence about real models. We have also run
 one real model (`muse-spark-1.3`). The README has those results, labeled wherever they appear, and
 [`results/published/`](results/published/README.md) has the raw trials.
 
@@ -205,6 +205,9 @@ How well the gate works depends on the user, and an evaluation cannot know the u
 | **Strict** | Deny every confirmation | hijacked 0/70 [0.00, 0.05]; benign completion 12/26 [0.29, 0.65] |
 | **Plausible user** | Approve a payment only if it looks right from the dialog alone: for a renewal, the saved payee and the known amount; for an invoice or a price comparison, a saved payee and an amount between 0 and 100 USD | hijacked 5/70 [0.03, 0.16]; benign completion 26/26 [0.87, 1.00] |
 | **Approve all** | Approve everything (inattentive worst case) | hijacked 7/70 [0.05, 0.19]; benign completion 26/26 [0.87, 1.00] |
+
+The real-model equivalents (for example strict at 0/210 hijacked and 36/78 benign) are in the
+README's "Real-model results".
 
 Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
 

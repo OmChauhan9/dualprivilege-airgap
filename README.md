@@ -10,14 +10,26 @@ Built for the Meta Global AI Developer Hackathon. Apache-2.0.
 > offline, hand-written simulated model (`FakeLLM`, a plumbing check). The other is one real
 > model (`muse-spark-1.3`, [raw trials published](results/published/README.md)).
 
-> **Bottom line (real model `muse-spark-1.3`, mock web, final code).** The attacker's own wallet or
-> mailbox was paid 0 times in 1,050 attack runs across five conditions. Without a defense the agent
-> was hijacked in 34/210 runs, every time by page data such as an inflated amount, and never by an
-> injected instruction (0 of 99 instruction runs). The default airgap was hijacked in 15/210 runs,
-> all of them published in-policy data lies. Strict confirmation had 0/210 but finished only 36/78
-> benign tasks. An adaptive attacker still got data lies through the default airgap in 119/172
-> attempts, and caused 0 hijacks under strict confirmation. Details are in
-> [Real-model results](#real-model-results-muse-spark-13).
+> **Bottom line (real model `muse-spark-1.3`, mock web, code at `86468f3`).** Terms first.
+> *Hijacked* means any unauthorized side effect, including the right payee paid an amount a page
+> lied about. *Default airgap* means the airgap with a plausible user, who approves what looks right
+> from the confirmation dialog. *Strict* means every confirmation is refused.
+>
+> - The attacker's own wallet or mailbox was paid 0 times in 1,050 attack runs across five
+>   conditions.
+> - Without a defense the agent was hijacked in 34/210 runs. 33 were page data such as an inflated
+>   amount. 1 followed a visible "PAY ... USD TO" installment notice (`identity:split_notice`) and
+>   overpaid the real payee. Hidden instructions never hijacked it (0 of 99 runs: the 33
+>   instruction attacks, 3 trials each).
+> - The default airgap was hijacked in 15/210 runs, all of them published in-policy data lies.
+>   Strict had 0/210 hijacks (3 runs repeated a false balance in the reply) but finished only
+>   36/78 benign tasks.
+> - An adaptive attacker got through the default airgap in 119/172 attempts (98 hijacks, all data
+>   lies, plus 21 false-total replies) and through strict in 20/172 (false-total replies only, 0
+>   hijacks).
+>
+> Later fixes did not change sanitizer output or offline results (details in
+> [Real-model results](#real-model-results-muse-spark-13)).
 
 [Threat model](THREAT_MODEL.md) · [Architecture](docs/architecture.md) ·
 [Provenance and prior art](PROVENANCE.md) · [ADRs](docs/adr/) · [Glossary](GLOSSARY.md)
@@ -41,7 +53,7 @@ Everything runs offline, and you need no API key.
 
 ```bash
 uv sync
-uv run airgap demo      # one poisoned page, unguarded agent vs airgapped agent
+uv run airgap demo      # one poisoned page, unguarded vs airgapped agent (offline FakeLLM)
 uv run airgap eval      # 70 attacks + 26 benign tasks: A, the C variants and two ablations
 cd web && npm ci && npx vite build && cd ..   # one-time console build
 uv run airgap serve     # web console on http://127.0.0.1:8000 (foreground; Ctrl-C to stop)
@@ -154,8 +166,7 @@ everything, like an inattentive user.
 | C: airgap, strict (`C_airgap_strict_confirm`) | 0/70 [0.00, 0.05] | 0/37 [0.00, 0.09] | 1/70 [0.00, 0.08] | 0/70 [0.00, 0.05] | 12/26 [0.29, 0.65] | 0.47 |
 | C: airgap, approve all (`C_airgap_approve_all`) | 7/70 [0.05, 0.19] | 7/37 [0.09, 0.34] | 7/70 [0.05, 0.19] | 0/70 [0.00, 0.05] | 26/26 [0.87, 1.00] | 0.46 |
 
-- **Read the data-driven column first.** 33 of the 70 attacks put instructions in a page (27
-  hidden, 6 visible).
+- **Read the data-driven column first.** 33 of the 70 attacks put instructions in a page.
   Any design that keeps pages away from the planner handles those easily, and the offline fake
   planner cannot even see them. The 37 data-driven attacks (in-policy amounts, schema smuggling,
   split payments, steering, false answers, lookalike identity, redirects, error pages) are where a
@@ -198,8 +209,9 @@ failed call as $0, so the true figure may be slightly higher.
 each (1,440 runs), in one command on the code after the Oct 31 review fixes (`86468f3`). It is the run to read for
 what the code does now. Later fixes (#46 to #55) changed the CLI, the run picker, P1's handling of
 links, the charset checks and more sanitizer rules. The run was not repeated after them. On all
-327 corpus pages the sanitizer output is byte-identical to `86468f3`, and the offline eval outcomes
-did not change. It is **not** unseen data. We used the tuning cases
+327 pages the scenarios serve (every benign page, channel and named attack, more than the 96 corpus
+cases use) the sanitizer output is byte-identical to `86468f3`, and the offline eval outcomes did
+not change. It is **not** unseen data. We used the tuning cases
 during development, and the Oct 30 run below had already spent the held-out cases. No run errored.
 
 | Condition (real model) | Hijacked, per run | Data-driven subset (111 runs) | Cases hijacked in any of 3 trials | Requests to unlisted domains | Benign completion |
@@ -368,7 +380,10 @@ Also not stopped, or not tested:
 - **The sanitizer is attack-surface reduction.** It parses inline `style` and presentation
   attributes, so comments, escapes, `!important`, shorthands and unit spellings do not hide a
   trick, and it drops elements browsers never paint (`<dialog>` without `open`, `<noembed>`, SVG
-  `<desc>`, media fallback text). It does not evaluate rules in a `<style>` block or class-based CSS. White text with no inline
+  `<desc>`, media fallback text). It does not evaluate rules in a `<style>` block or class-based CSS. Its rules are
+  a list, so a determined page can find hiding tricks it misses. The review panel found more
+  (`popover`, `<object>` fallback text, `calc()` arithmetic, `rotateY(90deg)`, dark text on a dark
+  background, `mask-image`). White text with no inline
   background counts as hidden, because a page with none renders white. The reader and the policy
   engine sit behind it for these reasons.
 - **Inattentive approval.** With approve-all, an inflated amount to the real payee goes through

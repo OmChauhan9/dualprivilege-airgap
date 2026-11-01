@@ -87,7 +87,8 @@ Notes on the storyboard:
 - The `C · Airgap` box shows six chips because `payment:integrity_visible` reaches its goal (a
   false balance in the reply) without a side effect; the other five are the hijacked cases.
 - Shot 1 is a simulation on purpose. In the frozen real-model run, the unguarded agent followed
-  no injected instruction (0 of 99 instruction runs); its 34 hijacks were all page data. So the
+  no hidden instruction (0 of 99 instruction runs). 33 of its 34 hijacks were page data, and 1
+  followed a visible installment notice (`identity:split_notice`). So the
   narration says "in our offline simulation", and shots 8 and 9 carry the real numbers.
 - Optional real-model B-roll: `results/published/video_demo/*.log` are four real `airgap demo
   --provider meta` runs. In both `identity` runs the real model ignored the injected line even
