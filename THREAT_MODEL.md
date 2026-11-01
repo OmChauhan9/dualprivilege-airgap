@@ -3,7 +3,8 @@
 What DualPrivilege-Airgap defends against, how, and where it does not. Terms follow
 [`GLOSSARY.md`](GLOSSARY.md). The design is in [`docs/architecture.md`](docs/architecture.md).
 
-Most evidence cited here comes from the offline `FakeLLM`, a hand-written simulation. It shows that
+Most numbers cited here come from the offline `FakeLLM`, a hand-written simulation, and each says
+so. Real-model numbers say "real model". It shows that
 the code enforces what this document says. It is not evidence about real models. We have also run
 one real model (`muse-spark-1.3`). The README has those results, labeled wherever they appear, and
 [`results/published/`](results/published/README.md) has the raw trials.
@@ -68,7 +69,7 @@ goal from the ledger.
 | User text, allowlists, limits (`UserContext`) | trusted | The user's own channel |
 | Orchestrator (LLM) | trusted input only | `plan()` takes the user text and `UserContext`; it never receives page content, reader output or runtime errors |
 | Plan validator, interpreter, policy engine | trusted code | Plain code; this is the boundary ([ADR 0001](docs/adr/0001-policy-engine-is-the-boundary.md)) |
-| Fetcher | trusted code, untrusted output | Its provenance (registrable domain, redirect chain, status) is a fact the page cannot set. The body is untrusted. The fetcher refuses a page that declares a charset browsers would decode differently (EBCDIC, UTF-16, UTF-7), so the sanitizer parses the same markup a browser renders |
+| Fetcher | trusted code, untrusted output | Its provenance (registrable domain, redirect chain, status) is a fact the page cannot set. The body is untrusted. The fetcher picks the charset in browser order (byte-order mark, then the header, then a `<meta>` tag) and refuses a charset browsers would decode differently (EBCDIC, UTF-16, UTF-7, ISO-2022), so the sanitizer parses the same markup a browser renders |
 | Sanitizer | trusted code, untrusted output | Reduces hidden channels, but is not a guarantee |
 | Reader (LLM) | untrusted | It reads attacker text. It has no tools and no network. Its output must match a flat schema, and every value carries a taint label with the origin domain |
 | Confirmation gate | the user | Its strength depends on how attentive the user is, so we report three modes |
@@ -93,8 +94,9 @@ to the saved address. The test `test_lookalike_wallet_never_becomes_the_payee` c
 address even with approve-all.
 **Exact match:** an address the user wrote counts only as a whole `0x...` token. A fragment, an
 empty string or a word from the request does not (`test_p1_rejects_fragments_and_near_misses...`).
-An address inside a URL the user pasted does not count either, so a lure link such as
-`http://.../pay?to=0x...` cannot make its wallet a valid payee.
+An address inside a link the user pasted does not count either, whatever the scheme's letter case
+and with or without a scheme (`www.`), so a lure link such as `http://.../pay?to=0x...` cannot make
+its wallet a valid payee.
 **Note:** in the offline corpus P1 never fires at runtime, because the orchestrator never sees an
 attacker address to copy. The code enforces this rule twice as a backstop: statically in `validate_plan`,
 and at runtime in `check_pay` (`test_p1_unlisted_payee_denied`).
@@ -296,12 +298,14 @@ adapts. It writes its results to a separate file and never mixes them into the c
 ## Honest limits
 
 - **One real model, and little unseen data.** We evaluated `muse-spark-1.3` on 19 held-out attack
-  cases (57 runs, run once on Oct 30 code). On the final code, we evaluated it on the whole corpus
+  cases (57 runs, run once on Oct 30 code), two of which were written together with the cap feature
+  they test. On the final code, we evaluated it on the whole corpus
   (70 attacks and 26 benign tasks, 3 trials each). The whole-corpus run is not unseen data. Its
   cases were used in development or already spent. In that run, the default airgap was hijacked in
   15/210 attack runs (5 cases, all published leaks), against 34/210 (13 cases) with no defense.
-  Paired by case, the airgap was never worse (8 cases to 0, exact sign test p = 0.008). The attacker's own wallet was never
-  paid, in any condition of any run. The held-out split happens to contain none of the visible-lie
+  Paired by case, the airgap was never worse (8 cases to 0, exact sign test p = 0.008), on cases the
+  rules were developed against. The attacker's own wallet was never paid, in any condition of any
+  real-model run (the offline `FakeLLM` simulation is a different matter: it pays by design). The held-out split happens to contain none of the visible-lie
   cases, so do not read its 0/57 as "secure". The "attacker paid" metric counts only
   attacker-owned wallets and mailboxes, not a lying vendor that is on the user's allowlist. Other
   models are untested.
