@@ -105,6 +105,14 @@ def _json_files(folder: Path) -> list[Path]:
     return sorted(f for f in folder.resolve().glob("*.json") if f.is_file() and not f.is_symlink())
 
 
+def _is_adaptive_file(path: Path) -> bool:
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False  # unreadable files stay listed and flagged by _run_info
+    return isinstance(raw, dict) and raw.get("kind") == "adaptive"
+
+
 def _result_runs(results_path: Path, published_dir: Path) -> dict[str, tuple[Path, bool]]:
     """Every run the console can show, keyed by run id, with whether it is marked invalid.
 
@@ -114,7 +122,8 @@ def _result_runs(results_path: Path, published_dir: Path) -> dict[str, tuple[Pat
     if results_path.is_file() and not results_path.is_symlink():
         runs["eval"] = (results_path, False)
     for f in _json_files(published_dir):
-        runs[f"published:{f.stem}"] = (f, False)
+        if not _is_adaptive_file(f):  # adaptive attempts are not eval trials; see their .log
+            runs[f"published:{f.stem}"] = (f, False)
     invalid_dir = published_dir / "invalid"
     if not invalid_dir.is_symlink():  # a linked folder could point outside the results tree
         for f in _json_files(invalid_dir):
