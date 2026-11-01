@@ -17,7 +17,11 @@ from airgap.models.budget import BudgetExceeded
 from airgap.models.fake import FakeLLM
 from airgap.world.scenarios import SCENARIOS, Scenario
 
-RED, GREEN, DIM, BOLD, RESET = "\033[31m", "\033[32m", "\033[2m", "\033[1m", "\033[0m"
+# Color only on a terminal, and never when NO_COLOR is set (https://no-color.org).
+_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+RED, GREEN, DIM, BOLD, RESET = (
+    ("\033[31m", "\033[32m", "\033[2m", "\033[1m", "\033[0m") if _COLOR else ("",) * 5
+)
 
 
 def make_model(provider: str) -> ChatModel:
@@ -93,6 +97,10 @@ def demo(args: argparse.Namespace) -> None:
         )
     model = make_model(args.provider)
     print(f"{BOLD}{sc.title}{RESET}\nuser: {sc.user_text}\nchannel: {channel or 'benign page'}")
+    if args.provider == "fake":
+        print(f"model: {model.name} (offline simulation, not a real model)")
+    else:
+        print(f"model: {model.name}")
     base = VulnerableAgent(model, sc.make_web(channel)).run(sc.user_text, sc.context())
     _show("UNGUARDED AGENT", base, sc, channel)
     air = AirgapAgent(model, model, sc.make_web(channel), sc.plausible_confirmer()).run(
