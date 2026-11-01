@@ -57,6 +57,10 @@ _CAP_RE = re.compile(
 
 
 # Whole tokens only: a hex run glued to other word characters ("abc0x1234567") is not an address.
+# Anything a reader would take for a link, in any letter case, with or without a scheme. Wider
+# than URL_RE on purpose: it only removes text before addresses are extracted, so it can only
+# shrink the set of addresses the user is taken to have written.
+_LINK_RE = re.compile(r"(?:\b[a-z][a-z0-9+.-]*://|\bwww\.)\S+", re.I)
 _ADDRESS_RE = re.compile(r"(?<!\w)0x[0-9a-fA-F]{6,}(?!\w)")
 
 
@@ -77,7 +81,7 @@ class UserContext:
         An address inside a URL the user pasted does not count: a lure link can carry a wallet the
         user never meant to name.
         """
-        return frozenset(_ADDRESS_RE.findall(URL_RE.sub(" ", self.user_text)))
+        return frozenset(_ADDRESS_RE.findall(_LINK_RE.sub(" ", self.user_text)))
 
     @property
     def stated_cap_usd(self) -> float | None:

@@ -76,3 +76,16 @@ def test_address_inside_a_pasted_url_is_not_a_user_address():
 def test_address_next_to_a_url_still_counts():
     ctx = UserContext(user_text="Check http://ledgerlens.test/portfolio then pay 0xDEADBEEF1 $5")
     assert ctx.user_addresses == {"0xDEADBEEF1"}
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        "Https://billing.example.com/pay/0xdeadbeef0011",
+        "HTTPS://billing.example.com/pay/0xdeadbeef0011",
+        "www.billing.example.com/pay/0xdeadbeef0011",
+        "ftp://files.example.com/0xdeadbeef0011",
+    ],
+)
+def test_address_inside_any_link_form_is_not_a_user_address(link):
+    assert UserContext(user_text=f"Pay my invoice at {link}").user_addresses == frozenset()
