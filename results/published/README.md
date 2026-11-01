@@ -13,6 +13,7 @@ errors, tokens, latency). Re-render a file in the console with
 |---|---|---|---|
 | `final_corpus_v2.json` / `.log` | **Final code, whole corpus.** All 96 cases (70 attacks, 26 benign), five conditions, 3 trials per case (1,440 runs), on the code after the Oct 31 review fixes. Not unseen data: the tuning cases were used during development and the held-out cases were already spent by `final_heldout`. Trial 1 of each case is the 1-trial view | all (96 cases) | `86468f3` |
 | `adaptive_v2_s1..s3.json` / `.log` | **Adaptive attacker, final code.** Three independent sessions, 10 scenarios x 8 rounds each, three conditions. Same rules as `adaptive_real`: fresh pages, never merged into the corpus. 54, 59 and 59 of 80 rounds were usable | none (adaptive) | `86468f3` |
+| `video_demo/*.log` | Four real-model `airgap demo --provider meta` runs on `86468f3`, recorded for the video (color codes removed): `identity` with `css_display_none` and `visible_text`, `steering` with `visible_text`, `email` with `css_display_none`. Single runs, so they illustrate behavior and are not results | none | `86468f3` |
 | `final_heldout.json` / `.log` | **The held-out evaluation.** All five conditions, 3 trials per case, run once | held-out (24 cases) | `cf4ac2f` |
 | `real_C_tuning_v3.json` / `.log` | Airgap (plausible, strict, approve-all), 1 trial per case | tuning (72 cases) | `84af775` |
 | `real_C_tuning_v2.json` / `.log` | Airgap before the `{"lit": ...}` memo fix (15 runs errored across the three modes, all plan-parse failures) | tuning | `b22da4c` |
