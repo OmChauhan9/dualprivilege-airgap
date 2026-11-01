@@ -17,7 +17,11 @@ from airgap.models.budget import BudgetExceeded
 from airgap.models.fake import FakeLLM
 from airgap.world.scenarios import SCENARIOS, Scenario
 
-RED, GREEN, DIM, BOLD, RESET = "\033[31m", "\033[32m", "\033[2m", "\033[1m", "\033[0m"
+# Color only on a terminal, and never when NO_COLOR is set (https://no-color.org).
+_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+RED, GREEN, DIM, BOLD, RESET = (
+    ("\033[31m", "\033[32m", "\033[2m", "\033[1m", "\033[0m") if _COLOR else ("",) * 5
+)
 
 
 def make_model(provider: str) -> ChatModel:

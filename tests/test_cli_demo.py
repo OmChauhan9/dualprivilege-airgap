@@ -21,3 +21,13 @@ def test_named_attack_and_none_are_accepted(capsys):
 def test_offline_demo_says_it_is_a_simulation(capsys):
     cli.main(["demo"])
     assert "model: fake-llm (offline simulation, not a real model)" in capsys.readouterr().out
+
+
+def test_piped_output_has_no_color_codes():
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-m", "airgap.cli", "demo"], capture_output=True, text=True, check=True
+    ).stdout
+    assert "\033[" not in out and "HIJACKED" in out
