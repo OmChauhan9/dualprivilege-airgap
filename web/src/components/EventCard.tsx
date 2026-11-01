@@ -88,7 +88,7 @@ const Mono = ({ children, className = "" }: { children: ReactNode; className?: s
 
 const KV = ({ k, children }: { k: string; children: ReactNode }) => (
   <div className="flex gap-3">
-    <dt className="label w-20 shrink-0 pt-0.5">{k}</dt>
+    <dt className="label w-28 shrink-0 pt-0.5 break-words">{k}</dt>
     <dd className="min-w-0 flex-1">{children}</dd>
   </div>
 );
@@ -145,7 +145,7 @@ function AgentAction({ ev }: { ev: Envelope }) {
             </>
           )}
         </dl>
-        <p className={followed ? "font-medium text-crit" : "text-fg-muted"}>
+        <p className={followed ? "font-semibold text-crit" : "text-fg-muted"}>
           {followed
             ? "Instruction came from the page, not the user. The tool ran immediately: nothing sits between the model and the side effect."
             : "The tool ran immediately, with no policy check."}
@@ -222,7 +222,7 @@ function PlanCard({ ev }: { ev: Envelope }) {
         })}
       </ol>
       <p className="text-fg-muted">
-        Written from the user's request alone. The orchestrator never sees page content, so
+        Written from the user’s request alone. The orchestrator never sees page content, so
         nothing on the page can talk to it.
       </p>
     </Card>
@@ -232,13 +232,13 @@ function PlanCard({ ev }: { ev: Envelope }) {
 export function ProvenanceBadge({ domain }: { domain: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-md border border-air/50 bg-air/10 px-2 py-1 font-mono text-[12px] text-air"
+      className="inline-flex items-center gap-1.5 rounded-md border border-air/50 bg-air/10 px-2 py-1 text-[12px] text-air"
       title="Registrable domain computed by the fetcher from the final URL. No model can set it."
     >
       <I.Lock />
       <span className="text-fg-muted">origin</span>
       <span className="font-semibold text-fg">{domain}</span>
-      <span className="text-[10px] tracking-wider text-air/80 uppercase">fetcher-verified</span>
+      <span className="text-[11px] text-air/80">fetcher-verified</span>
     </span>
   );
 }
@@ -279,7 +279,7 @@ function SanitizeCard({ ev, runChannel }: { ev: Envelope; runChannel: string | n
   const caughtPayload = d.removed.some((r) => PAYLOAD_MARK.test(r.snippet));
   return (
     <Card icon={<I.Scissors />} title="Sanitizer diff" actor="code" actorNote="sanitizer" seq={ev.seq}>
-      <div className="flex items-center gap-3 font-mono text-[12px]">
+      <div className="flex items-center gap-3 text-[12px] tabular-nums">
         <span className="text-fg-muted tabular-nums">{d.chars_in.toLocaleString()} chars</span>
         <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-ink-700" aria-hidden="true">
           <span
@@ -311,7 +311,7 @@ function SanitizeCard({ ev, runChannel }: { ev: Envelope; runChannel: string | n
                 <div
                   key={i}
                   className={`flex gap-2 px-2 py-1 font-mono text-[12px] ${
-                    PAYLOAD_MARK.test(s) ? "bg-crit/10 text-[#ffb3b3]" : "text-fg-muted"
+                    PAYLOAD_MARK.test(s) ? "bg-crit/10 text-crit-soft" : "text-fg-muted"
                   }`}
                 >
                   <span aria-hidden="true" className="select-none text-crit">

@@ -70,7 +70,7 @@ function LedgerAlert({ done }: { done: DoneData }) {
   if (!done.judgement.hijacked || bad.length === 0) return null;
   return (
     <div role="alert" className="animate-alarm mx-4 mb-3 rounded-lg border-2 border-crit bg-crit/15 px-3 py-2.5">
-      <div className="flex items-center gap-2 font-mono text-[12px] font-bold tracking-wider text-crit uppercase">
+      <div className="flex items-center gap-2 text-[12px] font-bold text-crit">
         <I.Alert className="text-base" /> Unauthorized side effect on the ledger
       </div>
       <ul className="mt-1.5 space-y-1">
@@ -83,7 +83,7 @@ function LedgerAlert({ done }: { done: DoneData }) {
           </li>
         ))}
       </ul>
-      <p className="mt-1.5 text-[11px] text-fg-muted">Scored from the ledger (ground truth), never from model text.</p>
+      <p className="mt-1.5 text-[12px] text-fg-muted">Scored from the ledger (ground truth), never from model text.</p>
     </div>
   );
 }
@@ -92,14 +92,14 @@ function Verdict({ id, done, start, approvedConfirm }: { id: PaneId; done: DoneD
   const attack = start?.channel != null;
   const j = done.judgement;
   const head = j.hijacked
-    ? { icon: <I.ShieldOff />, text: "HIJACKED", sub: j.goal_reached ? "attacker's goal reached" : "unauthorized side effect", cls: "border-crit bg-crit/10 text-crit" }
+    ? { icon: <I.ShieldOff />, text: "HIJACKED", sub: j.goal_reached ? "attacker’s goal reached" : "unauthorized side effect", cls: "border-crit bg-crit/10 text-crit" }
     : attack
       ? { icon: <I.Shield />, text: "ATTACK CONTAINED", sub: "no unauthorized side effects on the ledger", cls: "border-good/70 bg-good/10 text-good" }
       : { icon: <I.Check />, text: "CLEAN RUN", sub: "benign page, no injection", cls: "border-fg/40 bg-fg/5 text-fg" };
   return (
     <section aria-live="polite" aria-label={`${id} verdict`} className="space-y-2 border-t border-ink-700 bg-ink-850/80 px-4 py-3">
       <div className="flex flex-wrap items-center gap-3">
-        <span className={`inline-flex items-center gap-2 rounded-lg border-2 px-3 py-1.5 font-mono text-[15px] font-extrabold tracking-wider ${head.cls}`}>
+        <span className={`inline-flex items-center gap-2 rounded-lg border-2 px-3 py-1.5 font-mono text-[15px] font-bold ${head.cls}`}>
           {head.icon} {head.text}
         </span>
         <span className="text-[13px] text-fg-muted">{head.sub}</span>
@@ -107,12 +107,12 @@ function Verdict({ id, done, start, approvedConfirm }: { id: PaneId; done: DoneD
       <p className="flex items-center gap-2 text-[13px]">
         {j.benign_ok ? <I.Check className="text-good" /> : <I.Cross className="text-crit" />}
         <span>
-          User's task {j.benign_ok ? "completed correctly" : <b>not completed correctly</b>}
+          User’s task {j.benign_ok ? "completed correctly" : <b>not completed correctly</b>}
         </span>
         {done.reply && <span className="truncate text-fg-muted" title={done.reply}>· “{done.reply}”</span>}
       </p>
       {done.blocked && done.blocked.length > 0 && (
-        <ul className="space-y-0.5 font-mono text-[12px] text-fg-muted">
+        <ul className="space-y-0.5 text-[12px] text-fg-muted">
           {done.blocked.map((b) => (
             <li key={b}>
               <span className="text-good">blocked</span> {b}
@@ -128,7 +128,7 @@ function Verdict({ id, done, start, approvedConfirm }: { id: PaneId; done: DoneD
           is out of reach for this design (ADR 0001).
         </p>
       )}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-fg-faint tabular-nums">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-fg-faint tabular-nums">
         <span>confirmations {done.confirmations}</span>
         <span>tokens {done.prompt_tokens + done.completion_tokens}</span>
         <span>latency {done.latency_s.toFixed(3)}s</span>
@@ -155,7 +155,7 @@ export function Pane({ id, view, start, status }: { id: PaneId; view: PaneView; 
       <header className="space-y-2 px-4 pt-4 pb-3">
         <div className="flex items-center gap-2.5">
           <Icon className={`text-xl ${id === "unguarded" ? "text-crit" : "text-air"}`} />
-          <h2 className="font-mono text-[15px] font-bold tracking-[0.18em] uppercase">{m.title}</h2>
+          <h2 className=" text-[15px] font-bold">{m.title}</h2>
           <span className="text-[13px] text-fg-muted">{m.sub}</span>
           <span className="ml-auto">
             <StatusPill status={status} />
@@ -182,7 +182,7 @@ export function Pane({ id, view, start, status }: { id: PaneId; view: PaneView; 
       {view.done ? (
         <Verdict id={id} done={view.done} start={start} approvedConfirm={approvedConfirm} />
       ) : (
-        <div className="border-t border-ink-700 bg-ink-850/80 px-4 py-3 font-mono text-[12px] text-fg-faint">
+        <div className="border-t border-ink-700 bg-ink-850/80 px-4 py-3 text-[12px] text-fg-faint">
           verdict pending
         </div>
       )}

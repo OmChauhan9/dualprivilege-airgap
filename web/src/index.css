@@ -1,3 +1,9 @@
+/* Hallmark · shape: app screen · genre: modern-minimal (inferred) · theme: brand · redesign: restyle
+ * paper: ink-950 #06080b · accent: air #5cc8ff · display: Inter · body: Inter · data: JetBrains Mono
+ * nav: kept · signature: kept (the two panes, one attack, side by side) · states: idle, running, done, error, api offline
+ * axes: dark/sans/cyan · posture: restrained · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: the layout is kept; the restyle moves every colour into tokens, sets labels in the body face, and fixes contrast, overlap, overflow and small text · weakest: dense tables, kept as they are because the numbers are the product */
+/* Hallmark · dismissed 73 · crops of the 1440 render show no covered text; the pane hits are card text clipped inside its own scroll box · false positive */
 @import "tailwindcss";
 
 @theme {
@@ -27,29 +33,46 @@
 
   /* Identity accents (not status). */
   --color-air: #5cc8ff;
+  --color-air-hover: #86d8ff;
   --color-taint: #c792ff;
+
+  /* Lines and marks. Field edges clear 3:1 against the panels they sit on. */
+  --color-edge-field: #5d6b7c;
+  --color-crit-soft: #ffb3b3;
+  --color-grid-line: rgb(255 255 255 / 0.025);
+  --color-selection: rgb(92 200 255 / 0.3);
+  --color-alarm-ring: rgb(255 92 92 / 0.55);
+  --color-alarm-ring-off: rgb(255 92 92 / 0);
 }
 
 @layer base {
+  html,
+  body {
+    overflow-x: clip;
+  }
   html {
     background: var(--color-ink-950);
+    scrollbar-color: var(--color-ink-600) var(--color-ink-950);
     color: var(--color-fg);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
   body {
-    min-height: 100vh;
-    background:
-      radial-gradient(1200px 500px at 15% -10%, rgb(208 59 59 / 0.07), transparent 60%),
-      radial-gradient(1200px 500px at 85% -10%, rgb(92 200 255 / 0.07), transparent 60%),
-      var(--color-ink-950);
+    min-height: 100dvh;
+    background: var(--color-ink-950);
+    caret-color: var(--color-air);
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
   :focus-visible {
     outline: 2px solid var(--color-air);
     outline-offset: 2px;
   }
   ::selection {
-    background: rgb(92 200 255 / 0.3);
+    background: var(--color-selection);
   }
 }
 
@@ -58,16 +81,23 @@
     @apply rounded-xl border border-ink-700 bg-ink-900/90 shadow-[0_1px_0_0_rgb(255_255_255/0.03)_inset];
   }
   .label {
-    @apply font-mono text-[11px] font-medium tracking-[0.12em] text-fg-faint uppercase;
+    @apply text-[12px] font-semibold text-fg-faint;
   }
   .chip {
     @apply inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11px] leading-4 whitespace-nowrap;
   }
   .grid-bg {
     background-image:
-      linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+      linear-gradient(var(--color-grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-grid-line) 1px, transparent 1px);
     background-size: 24px 24px;
+  }
+}
+
+@layer base {
+  /* Pressed state for every button: a one-pixel press, transform only. */
+  button:not(:disabled):active {
+    transform: translateY(1px);
   }
 }
 
@@ -84,10 +114,10 @@
 @keyframes pulse-ring {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(255 92 92 / 0.55);
+    box-shadow: 0 0 0 0 var(--color-alarm-ring);
   }
   50% {
-    box-shadow: 0 0 0 6px rgb(255 92 92 / 0);
+    box-shadow: 0 0 0 6px var(--color-alarm-ring-off);
   }
 }
 .animate-enter {
