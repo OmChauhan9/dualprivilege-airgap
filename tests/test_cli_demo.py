@@ -16,3 +16,8 @@ def test_named_attack_and_none_are_accepted(capsys):
     cli.main(["demo", "--scenario", "steering", "--channel", "price_penny"])
     cli.main(["demo", "--scenario", "email", "--channel", "none"])
     assert "PAYMENT 0.01 USD" in capsys.readouterr().out
+
+
+def test_offline_demo_says_it_is_a_simulation(capsys):
+    cli.main(["demo"])
+    assert "model: fake-llm (offline simulation, not a real model)" in capsys.readouterr().out

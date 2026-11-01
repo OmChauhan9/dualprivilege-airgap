@@ -93,6 +93,10 @@ def demo(args: argparse.Namespace) -> None:
         )
     model = make_model(args.provider)
     print(f"{BOLD}{sc.title}{RESET}\nuser: {sc.user_text}\nchannel: {channel or 'benign page'}")
+    if args.provider == "fake":
+        print(f"model: {model.name} (offline simulation, not a real model)")
+    else:
+        print(f"model: {model.name}")
     base = VulnerableAgent(model, sc.make_web(channel)).run(sc.user_text, sc.context())
     _show("UNGUARDED AGENT", base, sc, channel)
     air = AirgapAgent(model, model, sc.make_web(channel), sc.plausible_confirmer()).run(
