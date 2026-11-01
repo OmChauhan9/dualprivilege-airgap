@@ -88,7 +88,7 @@ export function App() {
     setPending(true);
     try {
       if (mode === "live") {
-        setSource(`live · GET /api/run/stream · provider=${provider}`);
+        setSource(`live stream from GET /api/run/stream (provider ${provider})`);
         const ctl = new AbortController();
         abort.current = ctl;
         await streamRun({ scenario, channel, provider }, push, ctl.signal);
@@ -96,7 +96,7 @@ export function App() {
         const file = await loadReplays();
         const msgs = file.runs[`${scenario}:${channel}`];
         if (!msgs) throw new Error(`no recording for ${scenario}:${channel}`);
-        setSource("replay · replays/fake.json · FakeLLM recording");
+        setSource("replays/fake.json (FakeLLM recording)");
         playAll(msgs);
       }
     } catch (err) {
@@ -128,7 +128,7 @@ export function App() {
         const start = msgs.find((m) => m.kind === "start")?.data as { scenario?: string; channel?: string | null } | undefined;
         if (start?.scenario) setScenario(start.scenario);
         if (start) setChannel(start.channel ?? "none");
-        setSource(`replay · ${f.name}`);
+        setSource(`loaded trace ${f.name}`);
         playAll(msgs);
       } catch (err) {
         setNotice(`Could not load ${f.name}: ${(err as Error).message}`);
