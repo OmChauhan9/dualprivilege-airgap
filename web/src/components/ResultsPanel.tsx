@@ -121,11 +121,13 @@ export function ResultsPanel() {
         <h2 id="results-h" className=" text-[14px] font-bold">
           Evaluation results
         </h2>
-        <span className="font-mono text-[12px] text-fg-muted">
-          {run ? `GET /api/results?run=${run.id} · ${run.file}` : "GET /api/results · results/eval.json"}
+        <span className="font-mono text-[12px] text-fg-muted">{run ? `GET /api/results?run=${run.id}` : "GET /api/results"}</span>
+        <span className="text-[12px] text-fg-muted">
+          File <code className="font-mono text-fg">{run ? run.file : "results/eval.json"}</code>
         </span>
         {state.status === "ok" && (
           <span className="ml-auto flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
+            <DataDrivenShift data={state.data} />
             <span className="chip border-ink-500">model {state.data.model ?? "not recorded"}</span>
             <span className="chip border-ink-500">{state.data.n_cases} cases</span>
             <span className="chip border-ink-500">
@@ -160,6 +162,25 @@ export function ResultsPanel() {
   );
 }
 
+/** Data-driven attack success, unguarded then airgap, read from the loaded file. */
+function DataDrivenShift({ data }: { data: ResultsJson }) {
+  const a = data.conditions.A_no_defense?.data_driven_hijacked;
+  const c = data.conditions.C_airgap?.data_driven_hijacked;
+  if (!a || !c || a.n === 0 || a.n !== c.n) return null;
+  return (
+    <span
+      className="mr-2 flex items-baseline gap-2 text-[13px]"
+      title={`${condLabel("A_no_defense")} then ${condLabel("C_airgap")}, data-driven attacks only`}
+    >
+      <span className="text-fg-muted">Data-driven attacks hijacked, unguarded → airgap</span>
+      <span className="font-mono font-semibold tabular-nums">
+        <span className="text-crit">{a.k}</span> → <span className="text-air">{c.k}</span>
+        <span className="font-normal text-fg-muted"> of {a.n}</span>
+      </span>
+    </span>
+  );
+}
+
 // ---- run picker ----------------------------------------------------------------------
 
 type RunKind = "real" | "simulated" | "unrecorded" | "invalid";
@@ -168,25 +189,25 @@ const runKind = (r: RunJson): RunKind =>
   r.invalid ? "invalid" : r.simulated === true ? "simulated" : r.simulated === false ? "real" : "unrecorded";
 
 const KINDS: Record<RunKind, { group: string; badge: string; tone: string }> = {
-  real: { group: "Real model", badge: "Real model", tone: "border-air/60 bg-air/10 text-air" },
+  real: { group: "Real model", badge: "Real model", tone: "border-ink-500 text-fg" },
   simulated: {
     group: "Offline simulation (plumbing check, not evidence)",
-    badge: "Offline simulation · plumbing check",
+    badge: "Offline simulation: plumbing check",
     tone: "border-warn/60 bg-warn/10 text-warn",
   },
-  unrecorded: { group: "Model not recorded", badge: "Model not recorded", tone: "border-warn/60 bg-warn/10 text-warn" },
+  unrecorded: { group: "Model not recorded", badge: "Model not recorded", tone: "border-fg/60 text-fg" },
   invalid: {
     group: "Invalid (kept so it is not hidden)",
-    badge: "Invalid run · not a result",
-    tone: "border-crit/60 bg-crit/10 text-crit",
+    badge: "Invalid run: not a result",
+    tone: "border-fg/60 text-fg",
   },
 };
 
 function runOption(r: RunJson): string {
-  if (r.error) return `${r.label} · unreadable`;
+  if (r.error) return `${r.label} (unreadable)`;
   const trials = `${r.trials_per_case} trial${r.trials_per_case === 1 ? "" : "s"}/case`;
   const model = r.model ?? "model not recorded";
-  return `${r.label} · ${model} · ${r.n_cases} cases × ${trials}${r.incomplete ? " · incomplete" : ""}`;
+  return `${r.label}. Model ${model}, ${r.n_cases} cases × ${trials}${r.incomplete ? ", incomplete" : ""}`;
 }
 
 function KindBadge({ kind }: { kind: RunKind }) {
@@ -351,10 +372,19 @@ function ModelBanner({ data, file }: { data: ResultsJson; file: string }) {
         <p className="font-mono text-[15px] font-bold text-fg">
           Real model run: <span className="text-air">{data.model}</span>
         </p>
-        <p className=" text-[13px] text-fg-muted">
-          {runs} trial{runs === 1 ? "" : "s"} per case · {data.n_cases} cases
-          {" · not the fake model in the trace panes"}
-          {runs === 1 && " · one sample per case, so intervals do not cover run-to-run variation"}
+        <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px]">
+          <div className="flex items-baseline gap-1.5">
+            <dt className="text-fg-muted">Trials per case</dt>
+            <dd className="font-mono text-fg">{runs}</dd>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <dt className="text-fg-muted">Cases</dt>
+            <dd className="font-mono text-fg">{data.n_cases}</dd>
+          </div>
+        </dl>
+        <p className="text-[13px] text-fg-muted">
+          Not the fake model in the trace panes.
+          {runs === 1 && " One sample per case, so intervals do not cover run-to-run variation."}
         </p>
       </div>
     );
@@ -424,9 +454,9 @@ function Headline({ data, order }: { data: ResultsJson; order: string[] }) {
                 <span className="font-mono text-[11px] font-normal text-fg-muted">{CONDITIONS[cond]?.note}</span>
               </h3>
               <div className="grid grid-cols-3 gap-2">
-                <Stat label="Attack success" hint={`data-driven · ${dd}`} r={s.data_driven_hijacked} good="low" emphasis />
-                <Stat label="Attack success" hint={`all · ${all}`} r={s.hijacked} good="low" />
-                <Stat label="Benign completion" hint={`clean pages · ${s.benign_completion.n}`} r={s.benign_completion} good="high" />
+                <Stat label="Attack success" hint={`data-driven (${dd})`} r={s.data_driven_hijacked} good="low" emphasis />
+                <Stat label="Attack success" hint={`all (${all})`} r={s.hijacked} good="low" />
+                <Stat label="Benign completion" hint={`clean pages (${s.benign_completion.n})`} r={s.benign_completion} good="high" />
               </div>
             </div>
           );
@@ -736,7 +766,7 @@ function CategoryTable({ data, order }: { data: ResultsJson; order: string[] }) 
               type="button"
               aria-pressed={c === cond}
               onClick={() => setPicked(c)}
-              className={`chip h-8 cursor-pointer px-2.5 ${c === cond ? "border-air bg-air/15 text-fg" : "border-ink-500 text-fg-muted hover:text-fg"}`}
+              className={`chip h-8 cursor-pointer px-2.5 ${c === cond ? "border-fg bg-ink-700 text-fg" : "border-ink-500 text-fg-muted hover:text-fg"}`}
             >
               {condLabel(c)}
             </button>
@@ -773,7 +803,7 @@ function CategoryTable({ data, order }: { data: ResultsJson; order: string[] }) 
                   <Fragment key={String(g.dd)}>
                     <tr className="bg-ink-850/60">
                       <th scope="colgroup" colSpan={cols} className="px-4 py-1.5 text-left text-[11px] font-semibold text-fg-muted">
-                        {g.title} · {g.rows.reduce((n, c) => n + cats[c]!.hijacked.n, 0)} attack runs
+                        {g.title} ({g.rows.reduce((n, c) => n + cats[c]!.hijacked.n, 0)} attack runs)
                       </th>
                     </tr>
                     {g.rows.map((cat) => {
@@ -868,8 +898,8 @@ function HeldoutTable({ data, order }: { data: ResultsJson; order: string[] }) {
 
 const FLAGS: Record<LeakFlag, { text: string; tone: string }> = {
   hijacked: { text: "unauthorized side effect", tone: "border-crit/60 bg-crit/10 text-crit" },
-  goal_reached: { text: "attacker goal reached", tone: "border-warn/60 bg-warn/10 text-warn" },
-  unlisted_request: { text: "request to unlisted domain", tone: "border-taint/60 bg-taint/10 text-taint" },
+  goal_reached: { text: "attacker goal reached", tone: "border-crit/60 bg-crit/10 text-crit" },
+  unlisted_request: { text: "request to unlisted domain", tone: "border-crit/60 bg-crit/10 text-crit" },
 };
 
 /** Reasons cite issue URLs; make them real links. */

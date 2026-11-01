@@ -42,10 +42,10 @@ export function Header({ showFake, mode, api }: { showFake: boolean; mode: Mode;
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-3">
         <span
-          className={`chip ${mode === "live" ? "border-air/50 text-air" : "border-taint/50 text-taint"}`}
+          className="chip border-ink-600 text-fg-muted"
           title={mode === "live" ? "Streaming from the API" : "Playing stored events at a fixed cadence"}
         >
-          {mode === "live" ? "● LIVE" : "▶ REPLAY · deterministic"}
+          {mode === "live" ? "Live" : "Replay, deterministic"}
         </span>
         <span className="chip border-ink-600 text-fg-muted" title="API server status">
           <span
@@ -136,7 +136,7 @@ export function Controls(p: ControlsProps) {
         <select id="scenario" className={`${selectCls} w-[330px] max-w-full`} value={p.scenario} onChange={(e) => p.onScenario(e.target.value)} disabled={p.running}>
           {p.scenarios.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.id} · {s.title}
+              {s.id}: {s.title}
             </option>
           ))}
         </select>
@@ -248,7 +248,12 @@ export function Brief({ scenario, channel, source }: { scenario: Scenario | unde
       <div className="flex flex-wrap items-center gap-2">
         <span className="label">Scenario</span>
         <span className="text-[14px] font-semibold">{scenario.title}</span>
-        {source && <span className="chip ml-auto border-ink-600 text-fg-faint">{source}</span>}
+        {source && (
+          <span className="ml-auto flex items-center gap-2">
+            <span className="label">Source</span>
+            <span className="chip border-ink-600 text-fg-faint">{source}</span>
+          </span>
+        )}
       </div>
       <p className="flex gap-3 text-[15px] leading-relaxed">
         <span className="mt-0.5 shrink-0 rounded bg-fg px-1.5 py-px text-[11px] font-bold text-ink-950">USER</span>
@@ -260,7 +265,7 @@ export function Brief({ scenario, channel, source }: { scenario: Scenario | unde
           <span className="chip border-ink-500 text-fg">clean page, no injection</span>
         ) : (
           <span className="chip border-crit/60 bg-crit/10 text-crit">
-            <I.Alert /> poisoned · {channelLabel(channel)}
+            <I.Alert /> poisoned: {channelLabel(channel)}
           </span>
         )}
         <span className="text-fg-faint">fictional .test domains, in-process mock web</span>
@@ -294,7 +299,7 @@ export function ModelsPanel({ start, provider }: { start: StartData | null; prov
           Meta models used
         </h2>
         {start && (
-          <span className={`chip ml-auto ${simulated ? "border-warn/60 text-warn" : "border-air/60 text-air"}`}>
+          <span className={`chip ml-auto ${simulated ? "border-warn/60 text-warn" : "border-ink-500 text-fg-muted"}`}>
             provider {start.provider}
           </span>
         )}
@@ -310,7 +315,7 @@ export function ModelsPanel({ start, provider }: { start: StartData | null; prov
               <div className="font-mono text-[13px] text-fg">
                 {start ? start.models[role as keyof StartData["models"]] : "run to see"}
               </div>
-              <div className="text-[11px] text-fg-faint">{meta.note}</div>
+              <div className="text-[11px] whitespace-pre-line text-fg-faint">{meta.note}</div>
             </dd>
           </div>
         ))}

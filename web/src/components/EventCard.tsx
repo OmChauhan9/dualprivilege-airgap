@@ -52,14 +52,10 @@ function Card({
           <span className="text-base text-fg-muted">{icon}</span>
           <h4 className="text-[13px] font-semibold tracking-tight">{title}</h4>
           <span
-            className={`chip ${
-              actor === "model"
-                ? "border-taint/40 text-taint"
-                : "border-air/40 text-air"
-            }`}
+            className="chip border-ink-600 text-fg-muted"
             title={actor === "model" ? "A language model produced this" : "Plain code, no model"}
           >
-            {actor === "model" ? "MODEL" : "CODE"} · {actorNote}
+            {actor === "model" ? "Model" : "Code"}: {actorNote}
           </span>
           <span className="ml-auto font-mono text-[11px] text-fg-faint tabular-nums">#{seq}</span>
         </header>
@@ -72,7 +68,7 @@ function Card({
 export function TaintChip({ source, steered }: { source: string; steered?: boolean }) {
   return (
     <span
-      className="chip border-taint/50 bg-taint/10 text-taint"
+      className="chip border-crit/50 bg-crit/10 text-crit"
       title={steered ? "Chosen by untrusted data (P6)" : "Depends on untrusted content"}
     >
       <I.Alert className="text-[10px]" />
@@ -339,7 +335,7 @@ function SanitizeCard({ ev, runChannel }: { ev: Envelope; runChannel: string | n
 function ReaderCard({ ev }: { ev: Envelope }) {
   const d = ev.data as unknown as ReaderData;
   return (
-    <Card icon={<I.Brain />} title={`Typed read · ${d.schema}`} actor="model" actorNote="reader, quarantined" seq={ev.seq}>
+    <Card icon={<I.Brain />} title={`Typed read: ${d.schema}`} actor="model" actorNote="reader, quarantined" seq={ev.seq}>
       <table className="w-full border-collapse font-mono text-[12px]">
         <tbody>
           {Object.entries(d.value).map(([k, v]) => (
@@ -383,13 +379,12 @@ export function RuleOfTwoMeter({ r2 }: { r2: RuleOfTwo }) {
             title={`${k}: ${label} ${on ? "present" : "absent"}`}
           >
             <b>{k}</b> {label}
-            {on ? <I.Check /> : <span aria-hidden="true">·</span>}
+            {on && <I.Check />}
           </span>
         ))}
       </div>
-      <span className={`font-mono text-[11px] ${lit === 3 ? "text-warn" : "text-fg-faint"}`}>
-        {lit}/3{lit === 3 ? " · all three: gated by policy" : ""}
-      </span>
+      <span className="font-mono text-[11px] text-fg-faint">{lit}/3</span>
+      {lit === 3 && <span className="text-[11px] text-fg">all three: gated by policy</span>}
     </div>
   );
 }
@@ -398,10 +393,10 @@ function verdictBadge(d: PolicyData) {
   if (d.verdict === "allow")
     return { text: "ALLOW", icon: <I.Check />, cls: "border-fg/40 bg-fg/5 text-fg" };
   if (d.verdict === "deny")
-    return { text: "DENY · blocked", icon: <I.Shield />, cls: "border-good/60 bg-good/10 text-good" };
+    return { text: "DENY: blocked", icon: <I.Shield />, cls: "border-air/60 bg-air/10 text-air" };
   return d.approved
-    ? { text: "CONFIRM · user approved", icon: <I.Alert />, cls: "border-warn/60 bg-warn/10 text-warn" }
-    : { text: "CONFIRM · user declined", icon: <I.Cross />, cls: "border-warn/60 bg-warn/10 text-warn" };
+    ? { text: "CONFIRM: user approved", icon: <I.Alert />, cls: "border-fg/40 bg-fg/5 text-fg" }
+    : { text: "CONFIRM: user declined", icon: <I.Cross />, cls: "border-fg/40 bg-fg/5 text-fg" };
 }
 
 function PolicyCard({ ev }: { ev: Envelope }) {
@@ -411,7 +406,7 @@ function PolicyCard({ ev }: { ev: Envelope }) {
   return (
     <Card
       icon={<I.Gavel />}
-      title={`Policy · ${d.action}`}
+      title={`Policy: ${d.action}`}
       actor="code"
       actorNote="policy engine"
       seq={ev.seq}
@@ -458,10 +453,10 @@ function SteeringCard({ ev }: { ev: Envelope }) {
           <span
             key={c.alias}
             className={`rounded-md border px-2 py-1 font-mono text-[12px] ${
-              c.alias === d.chosen ? "border-warn/70 bg-warn/10 text-fg" : "border-ink-600 text-fg-muted"
+              c.alias === d.chosen ? "border-fg/60 bg-fg/5 text-fg" : "border-ink-600 text-fg-muted"
             }`}
           >
-            {c.alias} = {usd(c.value)} {c.alias === d.chosen && <b className="text-warn">← chosen</b>}
+            {c.alias} = {usd(c.value)} {c.alias === d.chosen && <b className="text-fg">(chosen)</b>}
           </span>
         ))}
       </div>

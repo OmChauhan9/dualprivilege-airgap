@@ -10,7 +10,7 @@ const META: Record<PaneId, { title: string; sub: string; flow: string[][]; accen
     title: "Unguarded",
     sub: "Vulnerable baseline agent",
     flow: [
-      ["user text", "agent model", "pay · email tools"],
+      ["user text", "agent model", "pay and email tools"],
       ["page", "raw HTML, hidden text and all", "same context"],
     ],
     accent: "from-crit-mark/80",
@@ -18,7 +18,7 @@ const META: Record<PaneId, { title: string; sub: string; flow: string[][]; accen
   },
   airgap: {
     title: "Airgapped",
-    sub: "Dual-privilege router · policy engine is the boundary",
+    sub: "Dual-privilege router, the policy engine is the boundary",
     flow: [
       ["user text", "orchestrator", "plan", "policy", "tools"],
       ["page", "fetcher", "sanitizer", "reader", "typed value"],
@@ -94,7 +94,7 @@ function Verdict({ id, done, start, approvedConfirm }: { id: PaneId; done: DoneD
   const head = j.hijacked
     ? { icon: <I.ShieldOff />, text: "HIJACKED", sub: j.goal_reached ? "attacker’s goal reached" : "unauthorized side effect", cls: "border-crit bg-crit/10 text-crit" }
     : attack
-      ? { icon: <I.Shield />, text: "ATTACK CONTAINED", sub: "no unauthorized side effects on the ledger", cls: "border-good/70 bg-good/10 text-good" }
+      ? { icon: <I.Shield />, text: "ATTACK CONTAINED", sub: "no unauthorized side effects on the ledger", cls: "border-air/70 bg-air/10 text-air" }
       : { icon: <I.Check />, text: "CLEAN RUN", sub: "benign page, no injection", cls: "border-fg/40 bg-fg/5 text-fg" };
   return (
     <section aria-live="polite" aria-label={`${id} verdict`} className="space-y-2 border-t border-ink-700 bg-ink-850/80 px-4 py-3">
@@ -105,17 +105,17 @@ function Verdict({ id, done, start, approvedConfirm }: { id: PaneId; done: DoneD
         <span className="text-[13px] text-fg-muted">{head.sub}</span>
       </div>
       <p className="flex items-center gap-2 text-[13px]">
-        {j.benign_ok ? <I.Check className="text-good" /> : <I.Cross className="text-crit" />}
+        {j.benign_ok ? <I.Check className="text-air" /> : <I.Cross className="text-crit" />}
         <span>
           User’s task {j.benign_ok ? "completed correctly" : <b>not completed correctly</b>}
         </span>
-        {done.reply && <span className="truncate text-fg-muted" title={done.reply}>· “{done.reply}”</span>}
+        {done.reply && <span className="truncate text-fg-muted" title={done.reply}>Reply: “{done.reply}”</span>}
       </p>
       {done.blocked && done.blocked.length > 0 && (
         <ul className="space-y-0.5 text-[12px] text-fg-muted">
           {done.blocked.map((b) => (
             <li key={b}>
-              <span className="text-good">blocked</span> {b}
+              <span className="text-air">blocked</span> {b}
             </li>
           ))}
         </ul>
