@@ -56,7 +56,7 @@ Every saved run the console can show: the local eval (`results/eval.json`, id `e
 the list with `error` set and empty counts.
 ```json
 {"default": "published:final_heldout", "runs": [{
-  "id": "published:final_heldout", "label": "Final evaluation, held-out split",
+  "id": "published:final_heldout", "label": "Held-out split, run once (Oct 30; earlier code)",
   "file": "final_heldout.json", "invalid": false, "reason": null,
   "model": "muse-spark-1.3", "simulated": false, "n_cases": 24, "trials_per_case": 3,
   "incomplete": false, "error": null}]}
@@ -66,7 +66,7 @@ the list with `error` set and empty counts.
 - `invalid`/`reason`: `reason` is set only for invalid runs and says why the run must not be read as
   a result (`INVALID_REASONS`, with a generic fallback).
 - `simulated`, `n_cases`, `trials_per_case`, `incomplete`: same meaning as in `/api/results`.
-- `default`: `published:final_heldout` when it is readable, else `eval`, else the first readable
+- `default`: `published:final_corpus_v2` when it is readable, else `published:final_heldout`, else `eval`, else the first readable
   valid run, else `null`. Never an invalid run.
 
 ## `GET /api/results` and `GET /api/results?run=<id>`

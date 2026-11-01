@@ -691,7 +691,7 @@ def test_runs_lists_local_eval_published_and_invalid_runs(runs_dir):
     ]
 
     final = runs["published:final_heldout"]
-    assert final["label"] == "Final evaluation, held-out split"
+    assert final["label"] == "Held-out split, run once (Oct 30; earlier code)"
     assert final["model"] == "muse-spark-1.3" and final["simulated"] is False
     assert (final["n_cases"], final["trials_per_case"]) == (1, 2)
     assert final["invalid"] is False and final["reason"] is None and final["error"] is None
@@ -871,3 +871,21 @@ def test_a_symlinked_invalid_folder_is_not_scanned(tmp_path, runs_dir):
     ids = {r["id"] for r in client.get("/api/results/runs").json()["runs"]}
     assert not any(i.startswith("invalid:") for i in ids)
     assert client.get("/api/results", params={"run": "invalid:secret"}).status_code == 404
+
+
+def test_final_code_corpus_run_is_the_default_when_published(tmp_path, fake_trials):
+    from dataclasses import asdict
+
+    published = tmp_path / "published"
+    published.mkdir()
+    for stem in ("final_heldout", "final_corpus_v2"):
+        (published / f"{stem}.json").write_text(
+            json.dumps({"model": "muse-spark-1.3", "trials": [asdict(t) for t in fake_trials]})
+        )
+    app = create_app(
+        results_path=tmp_path / "eval.json", web_dir=tmp_path / "dist", published_dir=published
+    )
+    body = TestClient(app).get("/api/results/runs").json()
+    assert body["default"] == "published:final_corpus_v2"
+    labels = {r["id"]: r["label"] for r in body["runs"]}
+    assert "not unseen" in labels["published:final_corpus_v2"]

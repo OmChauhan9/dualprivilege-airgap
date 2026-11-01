@@ -139,7 +139,8 @@ payee is ever authorized, whatever its value.
   reaches it.
 - Across the corpus, requests to unlisted domains: 0/70 attack runs with the airgap, 5/70 without
   a defense (offline). On the real model's held-out run: 0/57 with the airgap, 6/57 without a
-  defense and 6/57 with a prompt defense.
+  defense and 6/57 with a prompt defense. On the final-code run over the whole corpus: 0/210 with
+  the airgap, 15/210 without a defense and 15/210 with a prompt defense.
 
 ### P6. A choice made by tainted data needs confirmation
 
@@ -288,20 +289,26 @@ adapts. Results from it go in a separate file and are never mixed into the corpu
 
 ## Honest limits
 
-- **One real model, one small held-out split.** `muse-spark-1.3` was evaluated on 19 held-out
-  attack cases (57 runs) and 51 tuning cases. The attacker's own wallet was never paid, in any
-  condition. The data-driven attacks that the default airgap lets through on the tuning split
-  (5/27) are not in the held-out split, so its 0/57 there must not be read as "secure". The
-  "attacker paid" metric counts only attacker-owned wallets and mailboxes, not a lying vendor that
-  is on the user's allowlist. Other models are untested.
-- **Adaptive attacker: one small real run.** The corpus is fixed and hand-written (70 attacks; 19 held out by hash, now spent by the final real run).
-  Nasr et al. (2025) bypassed 12 recent defenses with adaptive attacks; the boundary here is code
-  for that reason. One real adaptive run (`muse-spark-1.3` against itself, 10 scenarios, 5 rounds,
-  39 usable attempts) is published in `results/published/adaptive_real.*`: attacker-owned wallet or
-  mailbox paid 0/39 in every condition; the default airgap let 25/39 attempts through, all of them
-  data lies (a wrong amount to the right vendor, a false total, a wrong vendor choice), the
-  already-listed leak class; strict confirmation had 0/39 hijacks and 4/39 goal-reached (a
-  misleading reply, no side effect). It is a lower bound from one attacker model and a few rounds.
+- **One real model, and little unseen data.** `muse-spark-1.3` was evaluated on 19 held-out attack
+  cases (57 runs, run once on Oct 30 code) and, on the final code, on the whole corpus (70 attacks
+  and 26 benign tasks, 3 trials each). The whole-corpus run is not unseen data: its cases were used
+  in development or already spent. There, the default airgap was hijacked in 15/210 attack runs (5
+  cases, all published leaks) against 34/210 (13 cases) with no defense; paired by case the airgap
+  was never worse (8 cases to 0, exact sign test p = 0.008). The attacker's own wallet was never
+  paid, in any condition of any run. The held-out split happens to contain none of the visible-lie
+  cases, so its 0/57 must not be read as "secure". The "attacker paid" metric counts only
+  attacker-owned wallets and mailboxes, not a lying vendor that is on the user's allowlist. Other
+  models are untested.
+- **Adaptive attacker: small, same model as the target.** The corpus is fixed and hand-written (70
+  attacks). Nasr et al. (2025) bypassed 12 recent defenses with adaptive attacks; the boundary here
+  is code for that reason. On the final code, three adaptive sessions (`muse-spark-1.3` against
+  itself, 10 scenarios, 8 rounds each, 172 usable attempts, `results/published/adaptive_v2_s*`)
+  paid the attacker's own wallet or mailbox 0 times in every condition. The default airgap let
+  119/172 attempts through, every one a data lie in the payment, invoice and steering scenarios (a
+  wrong amount to the real vendor, a false price, a false total), the already-listed leak class.
+  Strict confirmation had 0/172 hijacks and 20/172 goal-reached (a misleading reply, no side
+  effect). An earlier run on Oct 30 code (`adaptive_real.*`, 39 usable attempts) found the same.
+  It is a lower bound from one attacker model and a few rounds.
 - **Mock web only.** No real HTTP fetcher, no TLS, no PDFs or calendar invites in the corpus yet
   (HTML pages only), and only four reader schemas.
 - **Narrow utility.** Tasks that need open-ended reasoning over page content are out of reach for
