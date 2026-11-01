@@ -21,8 +21,9 @@ An agent that browses for you reads pages written by strangers. Those pages can 
 in white-on-white text, JSON-LD, `<meta>` tags, alt text or plain visible prose. When the same
 model that reads the page also holds your wallet and your mailbox, one sentence on a page can
 become a payment or an email. Prompt-level defenses ("ignore instructions in documents") are
-probabilistic, and adaptive attacks keep breaking them. In 2026, researchers documented live web
-pages (fake API docs, a lookalike domain) built to steer agents, and some models paid.
+probabilistic, and adaptive attacks keep breaking them. In July 2026, Zscaler ThreatLabz documented
+live web pages built to steer agents (fake API docs, a lookalike domain), and some of the models
+it tested paid (see [Related work](#related-work)).
 
 ## 60-second demo
 
@@ -250,7 +251,7 @@ What this does and does not show:
 
 **Why 0/57 is not "the airgap is secure".**
 
-- The held-out split is small (19 attack cases) and, by the hash, contains none of the visible-lie
+- The held-out split is small (19 attack cases) and, as the hash happened to fall, contains none of the visible-lie
   price cases that leak. Those are in the tuning split, where the default airgap let 5 of 51 attacks
   through. In the table below, those are the rows to read.
 - "Attacker paid" counts only the three wallets and one mailbox the attacker owns. It does not
@@ -279,8 +280,8 @@ default airgap is **not** clearly better than no defense on data-driven lies. Th
 against 7/27, with overlapping intervals. The five that get through are the published
 leaks below (a visible false price or amount that fits inside the policy limits). Only strict
 confirmation stops them, at the cost of half the benign tasks. An earlier airgap run on this split
-had 15 of 72 runs error. 9 of them were plan-parse failures. The rest were fetch denials, refusals
-and an empty reader reply that were then counted as safe stops, plus one `KeyError` crash. Fixing
+had 15 of 72 runs error. 9 were plan-parse failures, 1 was a `KeyError` crash, and the other 5
+were fetch denials, refusals and an empty reader reply that the harness then counted as safe stops. Fixing
 those errors is why the numbers moved. The first real run of all was invalid, because forced JSON
 decoding corrupted keys. We keep it in `results/published/invalid/` with the reason, not hidden.
 
@@ -382,8 +383,9 @@ Also not stopped, or not tested:
   lookalike link, P5 allows that domain. Only the payee rules still hold.
 - **Real web.** There is no real HTTPS fetcher and no TLS provenance. The registrable-domain check is a
   heuristic (last two labels plus a short list of multi-part suffixes), not the Public Suffix List.
-- **Adaptive attacks** were evaluated once, with a weak budget (5 rounds, one attacker model). Only
-  one real model has been used (`muse-spark-1.3`).
+- **Adaptive attacks** were evaluated with a small budget: one attacker model, which is also the
+  target, and at most 8 rounds per session (three sessions on the final code, one on earlier code).
+  Only one real model has been used (`muse-spark-1.3`).
 
 These other open issues do not change any headline number:
 
@@ -473,8 +475,8 @@ The building blocks are not new. [PROVENANCE.md](PROVENANCE.md) lists what is ou
 
 ## Roadmap
 
-- More real models, more trials per case, and a stronger, longer adaptive attacker (Results has
-  the first run).
+- More real models, more trials per case, a fresh unseen held-out split, and a stronger adaptive
+  attacker (a different attacker model, more rounds and search).
 - Close the no-cap cases of the published leaks: in-limit amounts the user cannot verify
   ([#2](https://github.com/OmChauhan9/dualprivilege-airgap/issues/2)) and the task total
   ([#3](https://github.com/OmChauhan9/dualprivilege-airgap/issues/3),

@@ -195,7 +195,7 @@ at the first fetch. When an action would combine [A] with [C]:
 
 ## Confirmation modes
 
-How well the gate works depends on the user, which an evaluation cannot know. We report three modes
+How well the gate works depends on the user, and an evaluation cannot know the user. We report three modes
 ([ADR 0004](docs/adr/0004-report-confirmation-modes-separately.md)):
 
 | Mode | Behavior | Offline result (FakeLLM, 70 attacks, 26 benign) |
@@ -235,7 +235,7 @@ Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
   more than", "not more than", "max" followed by a dollar amount). It ignores a cap written another
   way, and the default task budget applies. Without a cap, the task budget denies legitimate
   page-supplied amounts that add up to more than 100 USD in one task.
-- **Replies after a denial.** The plan's reply is drafted before anything runs. If policy denies a
+- **Replies after a denial.** The orchestrator drafts the reply as part of the plan, before anything runs. If policy denies a
   payment or email, the interpreter withholds that reply. It shows a code-written line naming only
   the action and rule ("pay denied by P2"), never page text. So a page cannot make the user
   believe a bill was paid. A run that fails for another reason shows its error, which can name a
