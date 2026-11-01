@@ -85,3 +85,73 @@ def test_hidden_inflated_invoice_variant_pays_the_honest_amount(monkeypatch, wra
     res = agent.run(sc.user_text, sc.context())
     assert not sc.judge(res.ledger, res.final_text).hijacked
     assert [p.amount_usd for p in res.ledger.payments] == [45.0]
+
+
+PANEL_HIDDEN = [
+    '<span style="color:white;background-color:transparent">{}</span>',
+    '<span style="color:#fff;background:rgba(0,0,0,0)">{}</span>',
+    '<span style="color:snow">{}</span>',
+    '<span style="position:absolute;margin:0 0 0 -99999px">{}</span>',
+    '<span style="position:absolute;inset:-99999px auto auto -99999px">{}</span>',
+    '<span style="position:absolute;translate:-99999px">{}</span>',
+    '<span style="letter-spacing:-1000px">{}</span>',
+    '<span style="font-size:min(0px,20px)">{}</span>',
+    '<span style="font-size:clamp(0px,0px,0px)">{}</span>',
+    '<span style="zoom:0.01">{}</span>',
+    '<span style="opacity:calc(0)">{}</span>',
+    '<span style="filter:opacity(0)">{}</span>',
+    '<span style="-webkit-text-fill-color:transparent">{}</span>',
+    '<span style="color:hwb(0 0% 0% / 0)">{}</span>',
+    '<span style="color:oklch(0 0 0 / 0)">{}</span>',
+    '<span style="display:inline-block;scale:0">{}</span>',
+    '<span style="display:inline-block;transform:scale(0%)">{}</span>',
+    '<span style="display:inline-block;transform:matrix(0,0,0,0,0,0)">{}</span>',
+    '<span style="content-visibility:hidden">{}</span>',
+    '<span style="clip-path:polygon(0 0,0 0,0 0)">{}</span>',
+    '<svg><text x="0" y="15" fill="none">{}</text></svg>',
+    '<svg><text x="0" y="15" style="fill:transparent">{}</text></svg>',
+    '<svg width="0" height="0"><text y="10">{}</text></svg>',
+    "<svg><desc>{}</desc></svg>",
+    "<svg><defs><text>{}</text></defs></svg>",
+    "<dialog>{}</dialog>",
+    "<details><summary>More</summary>{}</details>",
+    "<video>{}</video>",
+    "<canvas>{}</canvas>",
+    "<datalist><option>{}</option></datalist>",
+    "<ruby>a<rp>{}</rp><rt>b</rt></ruby>",
+    "<noframes>{}</noframes>",
+    "<noembed>{}</noembed>",
+    "<math><semantics><mi>x</mi><annotation>{}</annotation></semantics></math>",
+]
+
+
+@pytest.mark.parametrize("wrapper", PANEL_HIDDEN)
+def test_review_panel_hiding_variants_are_stripped(wrapper):
+    out = sanitize(f"<body><p>Visible 42</p>{wrapper.format('SECRET PAYLOAD')}</body>")
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+    assert out.removed
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<p style="font-size:clamp(12px,2vw,20px)">KEEP</p>',
+        '<p style="margin:-8px 0 0 -4px">KEEP</p>',
+        '<p style="letter-spacing:-0.5px">KEEP</p>',
+        '<p style="transform:matrix(1,0,0,1,0,0)">KEEP</p>',
+        '<p style="filter:opacity(0.8)">KEEP</p>',
+        '<p style="background:transparent;color:#222">KEEP</p>',
+        '<p style="color:ivory;background:#000">KEEP</p>',
+        "<details open><summary>S</summary>KEEP</details>",
+        "<details><summary>KEEP</summary>x</details>",
+        "<dialog open>KEEP</dialog>",
+        '<svg><path fill="none"/><text>KEEP</text></svg>',
+    ],
+)
+def test_ordinary_markup_is_kept(html):
+    assert "KEEP" in sanitize(html).text
+
+
+def test_white_body_text_attribute_hides_the_page_text():
+    out = sanitize('<body text="#ffffff"><p>SECRET PAYLOAD</p></body>')
+    assert "SECRET PAYLOAD" not in out.text
