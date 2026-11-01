@@ -36,3 +36,39 @@ def test_browser_charsets_decode(charset, expected):
 
 def test_latin1_label_decodes_like_a_browser():
     assert "€" in _fetch(b"<p>\x80</p>", "text/html; charset=iso-8859-1")
+
+
+def test_meta_charset_is_checked_when_the_header_has_none():
+    page = b'<html><head><meta charset="iso-2022-jp"></head><body>\x1b$Bxx\x1b(B</body></html>'
+    with pytest.raises(FetchError, match="unsupported charset"):
+        _fetch(page, "text/html")
+
+
+def test_meta_charset_of_a_browser_charset_is_used():
+    page = b'<html><head><meta charset="windows-1252"></head><body><p>\x80 5</p></body></html>'
+    assert "€ 5" in _fetch(page, "text/html")
+
+
+@pytest.mark.parametrize("bom", [b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff"])
+def test_a_non_utf8_byte_order_mark_is_refused_even_with_a_utf8_header(bom):
+    with pytest.raises(FetchError, match="byte-order mark"):
+        _fetch(bom + b"<p>Invoice total: $99.00</p>", "text/html; charset=utf-8")
+
+
+def test_a_utf8_byte_order_mark_is_dropped():
+    assert _fetch(b"\xef\xbb\xbf<p>ok</p>", "text/html; charset=utf-8") == "<p>ok</p>"
+
+
+def test_an_unknown_header_charset_is_refused():
+    with pytest.raises(FetchError, match="unsupported charset"):
+        _fetch(b"<p>hi</p>", "text/html; charset=no-such-charset")
+
+
+def test_a_meta_tag_inside_a_comment_is_ignored_like_a_browser_does():
+    page = b'<!-- <meta charset="utf-8"> --><meta charset="iso-2022-jp"><p>x</p>'
+    with pytest.raises(FetchError, match="unsupported charset"):
+        _fetch(page, "text/html")
+
+
+def test_us_ascii_is_decoded_as_windows_1252():
+    assert "€" in _fetch(b"<p>\x80</p>", "text/html; charset=us-ascii")
