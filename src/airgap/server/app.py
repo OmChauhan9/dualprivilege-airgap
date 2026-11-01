@@ -78,7 +78,8 @@ def _ui_files(web_dir: Path) -> dict[str, Path]:
 # listed here shows its file name and comes after these.
 RUN_LABELS = {
     "eval": "Latest local eval (airgap eval)",
-    "published:final_heldout": "Final evaluation, held-out split",
+    "published:final_corpus_v2": "Final code, whole corpus (Oct 31; not unseen data)",
+    "published:final_heldout": "Held-out split, run once (Oct 30; earlier code)",
     "published:real_C_tuning_v3": "Tuning: airgap conditions (v3)",
     "published:real_C_tuning_v2": "Tuning: airgap before the memo fix (v2)",
     "published:real_BC_tuning": "Tuning: prompt defense and first airgap run",
@@ -95,7 +96,7 @@ INVALID_REASONS = {
 }
 INVALID_FALLBACK = "Kept under results/published/invalid/ so it is not hidden; not a valid result."
 # The run the console opens on: the final real evaluation when it exists, else the local eval.
-DEFAULT_RUNS = ("published:final_heldout", "eval")
+DEFAULT_RUNS = ("published:final_corpus_v2", "published:final_heldout", "eval")
 
 
 def _json_files(folder: Path) -> list[Path]:
