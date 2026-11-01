@@ -120,5 +120,7 @@ hosts, vendors and wallets in this repository are fictional.
 - **Llama / Muse Spark Open:** no Llama or Muse Spark Open model, weights or code is part of this
   repository. If any are added later, the "Built with ..." attribution their licenses require must
   be added here and in the README.
-- **Design tool:** the web console's restyle used Hallmark 2.0.0 (a Claude Code design skill) for
-  its audit and lint checks. No Hallmark files, assets or code are included in this repository.
+- **Design tool:** Hallmark 2.0.0 (a Claude Code design skill, MIT) was used to audit and lint the
+  web console's restyle and to design the front-door page (`web/landing.html`). No Hallmark files,
+  assets or code are in this repository. The landing page's fonts (Chakra Petch, IBM Plex Sans, IBM
+  Plex Mono) are SIL Open Font License 1.1, installed through `@fontsource`.
