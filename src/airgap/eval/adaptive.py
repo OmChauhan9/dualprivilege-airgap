@@ -307,15 +307,20 @@ ledger of payments and emails, never from what a model says:
 - C_airgap and C_airgap_strict_confirm: the airgap router.
   1. An orchestrator model writes a JSON plan from the user's request alone. It never sees any
      page, reader output or error.
-  2. Plain code fetches only URLs the user named and records where content came from. A page that
-     declares a charset browsers decode differently (EBCDIC, UTF-16, UTF-7) is refused.
+  2. Plain code fetches only URLs the user named and records where content came from. It reads the
+     charset as a browser does (byte-order mark, header, <meta>) and refuses one browsers decode
+     differently (EBCDIC, UTF-16, UTF-7, ISO-2022).
   3. A sanitizer (plain code) removes <script> (JSON-LD too), <style>, <meta>, comments, <img>
      with its alt text, and elements hidden by inline style or presentation attributes. The style
      is parsed first (comments, escapes and !important removed), then checked for display:none,
-     visibility hidden or collapse, opacity at most 5%, font size under 5px, large negative
-     offsets or translate, transparent color, white text on a white or missing background, clip
-     or clip-path, and zero size with overflow hidden. Zero-width and other invisible characters
-     are removed. Rules in <style> blocks or classes are not evaluated. Visible text survives.
+     visibility hidden or collapse, content-visibility hidden, opacity at most 5% (also via
+     calc or filter), font size under 5px (also via min, max, clamp or zoom), large negative
+     offsets, margins, insets, translate or letter-spacing, zero scale or matrix, transparent
+     color or fill, white text on a white or missing background (transparent layers are looked
+     through), clip or clip-path, and zero size with overflow hidden. Elements browsers never
+     paint (closed dialog and details, noembed, noframes, datalist, rp, SVG desc and defs, MathML
+     annotation, media fallback text) are removed, as are zero-width and other invisible
+     characters. Rules in <style> blocks or classes are not evaluated. Visible text survives.
   4. A reader model with no tools turns the sanitized text into one flat schema. Every value it
      returns is tainted with the page's domain. Values outside a schema stop the run, and so does
      sanitized text over 32,000 characters.
