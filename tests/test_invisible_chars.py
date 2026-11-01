@@ -12,6 +12,9 @@ def test_invisible_non_cf_characters_are_stripped(code):
     assert any(r.channel == "zero_width_chars" for r in res.removed)
 
 
-@pytest.mark.parametrize("code", [0x180B, 0x180C, 0x180D, 0x180F, 0x2065, 0xFFF0, 0xE0080, 0x16FE4])
+@pytest.mark.parametrize(
+    "code",
+    [0x180B, 0x180C, 0x180D, 0x180F, 0x2065, 0xFFF0, 0xE0000, 0xE0002, 0xE001F, 0xE0080, 0x16FE4],
+)
 def test_mongolian_selectors_and_default_ignorables_are_stripped(code):
     assert sanitize(f"<p>Pay{chr(code)}now</p>").text == "Paynow"
