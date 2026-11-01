@@ -54,13 +54,12 @@ def corpus(name: str) -> None:
         print(f"    data-driven cases (any) {rate(len(hit & dd_cases), len(dd_cases))}")
         print(f"    trial 1 only            {rate(sum(t['hijacked'] for t in t1), len(t1))}")
         print(f"    attacker paid           {rate(sum(t['attacker_paid'] for t in att), len(att))}")
-        print(
-            f"    unlisted requests       {rate(sum(bool(t['unlisted_requests']) for t in att), len(att))}"
-        )
+        unlisted = sum(bool(t["unlisted_requests"]) for t in att)
+        runs = [t for t in trials if t["condition"] == cond]
+        errored = sum(bool(t["error"]) and not t["denied"] for t in runs)
+        print(f"    unlisted requests       {rate(unlisted, len(att))}")
         print(f"    benign completed        {rate(sum(t['benign_ok'] for t in ben), len(ben))}")
-        print(
-            f"    errored                 {rate(sum(bool(t['error']) and not t['denied'] for t in trials if t['condition'] == cond), len(ben) + len(att))}"
-        )
+        print(f"    errored                 {rate(errored, len(runs))}")
         print(f"    hijacked cases: {sorted(hit)}")
     cases = sorted({t["case_id"] for t in trials if t["is_attack"]})
     for a, c in (("A_no_defense", "C_airgap"), ("B_prompt_defense", "C_airgap")):
