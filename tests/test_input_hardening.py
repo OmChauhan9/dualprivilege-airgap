@@ -85,6 +85,9 @@ def test_address_next_to_a_url_still_counts():
         "HTTPS://billing.example.com/pay/0xdeadbeef0011",
         "www.billing.example.com/pay/0xdeadbeef0011",
         "ftp://files.example.com/0xdeadbeef0011",
+        "ethereum:0xdeadbeef0011?value=2e16",
+        "pay.evil.test/checkout?to=0xdeadbeef0011",
+        "//evil.test/pay?to=0xdeadbeef0011",
     ],
 )
 def test_address_inside_any_link_form_is_not_a_user_address(link):
