@@ -14,8 +14,8 @@ export function FakeBadge() {
     >
       <I.Flask className="shrink-0 text-base" />
       <div className="leading-tight">
-        <div className=" text-[12px] font-bold">Offline fake model</div>
-        <div className="text-[11px] text-warn/90">plumbing check, not evidence about real models</div>
+        <div className=" text-[12px] font-bold">Trace panes: offline fake model</div>
+        <div className="text-[11px] text-warn/90">The two panes replay FakeLLM runs. The results below come from the run picked there.</div>
       </div>
     </div>
   );

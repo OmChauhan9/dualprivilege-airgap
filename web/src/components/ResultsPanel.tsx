@@ -349,10 +349,11 @@ function ModelBanner({ data, file }: { data: ResultsJson; file: string }) {
       <div role="note" aria-label="Real model" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b-2 border-air/60 bg-air/[0.07] px-4 py-3">
         <I.Brain className="shrink-0 text-xl text-air" />
         <p className="font-mono text-[15px] font-bold text-fg">
-          Real model: <span className="text-air">{data.model}</span>
+          Real model run: <span className="text-air">{data.model}</span>
         </p>
         <p className=" text-[13px] text-fg-muted">
           {runs} trial{runs === 1 ? "" : "s"} per case · {data.n_cases} cases
+          {" · not the fake model in the trace panes"}
           {runs === 1 && " · one sample per case, so intervals do not cover run-to-run variation"}
         </p>
       </div>
