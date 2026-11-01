@@ -14,7 +14,7 @@ export function FakeBadge() {
     >
       <I.Flask className="shrink-0 text-base" />
       <div className="leading-tight">
-        <div className="font-mono text-[12px] font-bold tracking-wider uppercase">Offline fake model</div>
+        <div className=" text-[12px] font-bold">Offline fake model</div>
         <div className="text-[11px] text-warn/90">plumbing check, not evidence about real models</div>
       </div>
     </div>
@@ -32,7 +32,7 @@ export function Header({ showFake, mode, api }: { showFake: boolean; mode: Mode;
           <path d="M14 16h4" stroke="#7d8b9c" strokeWidth="2" strokeDasharray="1 2" />
         </svg>
         <div>
-          <h1 className="font-mono text-[17px] font-bold tracking-[0.14em] uppercase">
+          <h1 className="font-mono text-[17px] font-bold">
             DualPrivilege<span className="text-air">·</span>Airgap
           </h1>
           <p className="text-[13px] text-fg-muted">
@@ -72,7 +72,7 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
 }
 
 const selectCls =
-  "h-9 rounded-md border border-ink-600 bg-ink-850 px-2.5 text-[13px] text-fg hover:border-ink-500 disabled:opacity-50";
+  "h-9 rounded-md border border-edge-field bg-ink-850 px-2.5 text-[13px] text-fg hover:border-fg-faint disabled:opacity-50";
 
 function Segmented<T extends string>({
   value,
@@ -193,7 +193,7 @@ export function Controls(p: ControlsProps) {
         type="button"
         onClick={p.onRun}
         disabled={p.running || !sc}
-        className="flex h-9 items-center gap-2 rounded-md bg-air px-5 font-mono text-[13px] font-bold tracking-wider text-ink-950 uppercase shadow-[0_0_24px_-6px_rgb(92_200_255/0.7)] hover:bg-[#86d8ff] disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-9 items-center gap-2 rounded-md bg-air px-5 text-[13px] font-bold text-ink-950 hover:bg-air-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
         <I.Play /> {p.running ? "Running…" : "Run"}
       </button>
@@ -203,7 +203,7 @@ export function Controls(p: ControlsProps) {
           onClick={p.onExport}
           disabled={!p.canExport}
           className="flex h-9 items-center gap-1.5 rounded-md border border-ink-600 px-3 text-[12px] text-fg-muted hover:border-ink-500 hover:text-fg disabled:opacity-40"
-          title="Download this run's events for deterministic replay"
+          title="Download this run’s events for deterministic replay"
         >
           <I.Download /> Export trace
         </button>
@@ -251,7 +251,7 @@ export function Brief({ scenario, channel, source }: { scenario: Scenario | unde
         {source && <span className="chip ml-auto border-ink-600 text-fg-faint">{source}</span>}
       </div>
       <p className="flex gap-3 text-[15px] leading-relaxed">
-        <span className="mt-0.5 shrink-0 rounded bg-fg px-1.5 py-px font-mono text-[11px] font-bold text-ink-950">USER</span>
+        <span className="mt-0.5 shrink-0 rounded bg-fg px-1.5 py-px text-[11px] font-bold text-ink-950">USER</span>
         <span>{highlightUrls(scenario.user_text)}</span>
       </p>
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
@@ -277,7 +277,7 @@ export function Brief({ scenario, channel, source }: { scenario: Scenario | unde
           <I.Shield className="mt-0.5 shrink-0 text-air" />
           <span>
             <b className="text-fg">Right:</b> only a tool-less reader sees the page. The planner sees
-            the user's words, and every side effect passes plain-code policy.
+            the user’s words, and every side effect passes plain-code policy.
           </span>
         </p>
       </div>

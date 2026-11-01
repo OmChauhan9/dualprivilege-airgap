@@ -120,3 +120,5 @@ hosts, vendors and wallets in this repository are fictional.
 - **Llama / Muse Spark Open:** no Llama or Muse Spark Open model, weights or code is part of this
   repository. If any are added later, the "Built with ..." attribution their licenses require must
   be added here and in the README.
+- **Design tool:** the web console's restyle used Hallmark 2.0.0 (a Claude Code design skill) for
+  its audit and lint checks. No Hallmark files, assets or code are included in this repository.

@@ -4,6 +4,8 @@ import { CONDITIONS, categoryLabel, pct } from "../labels";
 import type { ConditionJson, LeakFlag, LeakJson, RateJson, ResultsJson, RunJson, RunsJson } from "../types";
 import * as I from "./icons";
 
+const { Shield: ShieldIcon, ShieldOff: ShieldOffIcon } = I;
+
 type Good = "low" | "high";
 
 const ci = (r: RateJson) => `95% CI ${pct(r.lo)}–${pct(r.hi)}`;
@@ -33,7 +35,7 @@ function Track({ r, good }: { r: RateJson; good: Good }) {
 function RateText({ r, good, size = "md" }: { r: RateJson; good: Good; size?: "md" | "lg" }) {
   const lg = size === "lg";
   if (r.n === 0) {
-    return <span className="font-mono text-[12px] text-fg-muted">not recorded</span>;
+    return <span className=" text-[12px] text-fg-muted">not recorded</span>;
   }
   const alarm = good === "low" && r.k > 0;
   return (
@@ -116,14 +118,14 @@ export function ResultsPanel() {
     <section className="panel overflow-hidden" aria-labelledby="results-h">
       <header className="flex flex-wrap items-center gap-3 border-b border-ink-700 px-4 py-3">
         <I.Flask className="text-lg text-air" />
-        <h2 id="results-h" className="font-mono text-[14px] font-bold tracking-[0.16em] uppercase">
+        <h2 id="results-h" className=" text-[14px] font-bold">
           Evaluation results
         </h2>
         <span className="font-mono text-[12px] text-fg-muted">
           {run ? `GET /api/results?run=${run.id} · ${run.file}` : "GET /api/results · results/eval.json"}
         </span>
         {state.status === "ok" && (
-          <span className="ml-auto flex flex-wrap items-center gap-2 font-mono text-[12px] text-fg-muted">
+          <span className="ml-auto flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
             <span className="chip border-ink-500">model {state.data.model ?? "not recorded"}</span>
             <span className="chip border-ink-500">{state.data.n_cases} cases</span>
             <span className="chip border-ink-500">
@@ -221,7 +223,7 @@ function RunPicker({
         id="run-picker"
         value={run?.id ?? ""}
         onChange={(e) => onPick(e.target.value)}
-        className="max-w-full min-w-0 flex-1 rounded-md border border-ink-500 bg-ink-900 px-2 py-1.5 font-mono text-[13px] text-fg sm:flex-none"
+        className="max-w-full min-w-0 flex-1 rounded-md border border-edge-field bg-ink-900 px-2 py-1.5 font-mono text-[13px] text-fg sm:flex-none"
       >
         {kinds.map((k) => {
           const rows = runs.filter((r) => runKind(r) === k);
@@ -259,7 +261,7 @@ function InvalidBanner({ run }: { run: RunJson }) {
     <div role="note" aria-label="Invalid run" className="flex gap-3 border-b-2 border-crit/70 bg-crit/[0.09] px-4 py-3 text-crit">
       <I.Cross className="mt-1 shrink-0 text-xl" />
       <div className="space-y-1">
-        <p className="font-mono text-[15px] font-bold tracking-wide uppercase">Invalid run: do not read these numbers as results</p>
+        <p className=" text-[15px] font-bold">Invalid run: do not read these numbers as results</p>
         <p className="text-[13px] text-fg">
           <span className="text-fg-muted">Why: </span>
           {run.reason}
@@ -277,7 +279,7 @@ function ResultsBody({ data, file, invalid }: { data: ResultsJson; file: string;
   return (
     <div>
       {invalid ? (
-        <p role="alert" className="border-b-2 border-crit/70 bg-crit/[0.12] px-4 py-2 font-mono text-[14px] font-bold tracking-wide text-crit uppercase">
+        <p role="alert" className="border-b-2 border-crit/70 bg-crit/[0.12] px-4 py-2 text-[14px] font-bold text-crit">
           Invalid run: shown for transparency only. Do not cite these numbers.
         </p>
       ) : (
@@ -330,7 +332,7 @@ function ModelBanner({ data, file }: { data: ResultsJson; file: string }) {
       <div role="note" aria-label="Offline simulation" className="flex gap-3 border-b-2 border-warn/70 bg-warn/[0.09] px-4 py-3 text-warn">
         <I.Alert className="mt-1 shrink-0 text-xl" />
         <div className="space-y-1">
-          <p className="font-mono text-[15px] font-bold tracking-wide uppercase">
+          <p className=" text-[15px] font-bold">
             Offline simulation: plumbing check, not evidence about real models
           </p>
           <p className="text-[13px] text-fg">
@@ -349,7 +351,7 @@ function ModelBanner({ data, file }: { data: ResultsJson; file: string }) {
         <p className="font-mono text-[15px] font-bold text-fg">
           Real model: <span className="text-air">{data.model}</span>
         </p>
-        <p className="font-mono text-[13px] text-fg-muted">
+        <p className=" text-[13px] text-fg-muted">
           {runs} trial{runs === 1 ? "" : "s"} per case · {data.n_cases} cases
           {runs === 1 && " · one sample per case, so intervals do not cover run-to-run variation"}
         </p>
@@ -360,7 +362,7 @@ function ModelBanner({ data, file }: { data: ResultsJson; file: string }) {
     <div role="note" aria-label="Model not recorded" className="flex gap-3 border-b-2 border-warn/70 bg-warn/[0.09] px-4 py-3 text-warn">
       <I.Alert className="mt-1 shrink-0 text-xl" />
       <div className="space-y-1">
-        <p className="font-mono text-[15px] font-bold tracking-wide uppercase">Model not recorded</p>
+        <p className=" text-[15px] font-bold">Model not recorded</p>
         <p className="text-[13px] text-fg">
           {file} does not say which model produced these numbers, so treat them as unverified. A default{" "}
           <code className="font-mono text-warn">uv run airgap eval</code> run uses the offline FakeLLM: a plumbing check,
@@ -416,7 +418,7 @@ function Headline({ data, order }: { data: ResultsJson; order: string[] }) {
           return (
             <div key={cond} className="space-y-2">
               <h3 className="flex items-center gap-2 text-[13px] font-semibold">
-                {cond === "A_no_defense" ? <I.ShieldOff className="text-crit" /> : <I.Shield className="text-air" />}
+                {cond === "A_no_defense" ? <ShieldOffIcon className="text-crit" /> : <ShieldIcon className="text-air" />}
                 {condLabel(cond)}
                 <span className="font-mono text-[11px] font-normal text-fg-muted">{CONDITIONS[cond]?.note}</span>
               </h3>
@@ -459,7 +461,7 @@ function Axis() {
           x={`${t * 100}%`}
           y="10"
           textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"}
-          className="fill-fg-faint font-mono text-[10px]"
+          className="fill-fg-faint font-mono text-[11px]"
         >
           {t * 100}
           {t === 1 ? "%" : ""}
@@ -501,7 +503,7 @@ function rateSentence(r: RateJson): string {
 }
 
 function IntervalLabel({ r }: { r: RateJson }) {
-  if (r.n === 0) return <span className="font-mono text-[11px] text-fg-muted">not recorded</span>;
+  if (r.n === 0) return <span className=" text-[11px] text-fg-muted">not recorded</span>;
   return (
     <span className="font-mono text-[12px] whitespace-nowrap tabular-nums">
       <span className="font-bold text-fg">
@@ -651,7 +653,7 @@ function ConditionTable({ data, order }: { data: ResultsJson; order: string[] })
         </caption>
         <thead>
           <tr className="border-b border-ink-700 bg-ink-850">
-            <th scope="col" className="label sticky left-0 z-10 bg-ink-850 px-4 py-2 font-medium">
+            <th scope="col" className="label sticky left-0 z-10 bg-ink-850 px-4 py-2 font-semibold">
               Condition
             </th>
             {COLS.map((c) => (
@@ -664,7 +666,7 @@ function ConditionTable({ data, order }: { data: ResultsJson; order: string[] })
             ))}
             <th scope="col" className="px-2.5 py-2 align-bottom">
               <div className="text-[12px] font-semibold text-fg">Confirms</div>
-              <div className="font-mono text-[11px] text-fg-muted">per run</div>
+              <div className=" text-[11px] text-fg-muted">per run</div>
             </th>
           </tr>
         </thead>
@@ -698,9 +700,12 @@ function ConditionTable({ data, order }: { data: ResultsJson; order: string[] })
 
 function Legend() {
   return (
-    <p className="border-t border-ink-700 px-4 py-2 font-mono text-[11px] text-fg-muted">
-      k/n with its 95% Wilson interval (CI) · bar: the interval on a 0–100% scale, tick at k/n · data-driven: success
-      needs a lie, not an obeyed instruction
+    <p className="border-t border-ink-700 px-4 py-2 font-mono text-[12px] leading-5 text-fg-muted">
+      k/n with its 95% Wilson interval (CI)
+      <br />
+      bar: the interval on a 0–100% scale, tick at k/n
+      <br />
+      data-driven: success needs a lie, not an obeyed instruction
     </p>
   );
 }
@@ -730,7 +735,7 @@ function CategoryTable({ data, order }: { data: ResultsJson; order: string[] }) 
               type="button"
               aria-pressed={c === cond}
               onClick={() => setPicked(c)}
-              className={`chip cursor-pointer ${c === cond ? "border-air bg-air/15 text-fg" : "border-ink-500 text-fg-muted hover:text-fg"}`}
+              className={`chip h-8 cursor-pointer px-2.5 ${c === cond ? "border-air bg-air/15 text-fg" : "border-ink-500 text-fg-muted hover:text-fg"}`}
             >
               {condLabel(c)}
             </button>
@@ -741,7 +746,7 @@ function CategoryTable({ data, order }: { data: ResultsJson; order: string[] }) 
         <table className="w-full border-collapse text-left" aria-labelledby="cat-h">
           <thead>
             <tr className="border-y border-ink-700 bg-ink-850">
-              <th scope="col" className="label px-4 py-2 font-medium">
+              <th scope="col" className="label px-4 py-2 font-semibold">
                 Category
               </th>
               {compare && (
@@ -766,7 +771,7 @@ function CategoryTable({ data, order }: { data: ResultsJson; order: string[] }) 
                 g.rows.length > 0 && (
                   <Fragment key={String(g.dd)}>
                     <tr className="bg-ink-850/60">
-                      <th scope="colgroup" colSpan={cols} className="px-4 py-1.5 text-left font-mono text-[11px] font-medium text-fg-muted">
+                      <th scope="colgroup" colSpan={cols} className="px-4 py-1.5 text-left text-[11px] font-semibold text-fg-muted">
                         {g.title} · {g.rows.reduce((n, c) => n + cats[c]!.hijacked.n, 0)} attack runs
                       </th>
                     </tr>
@@ -821,7 +826,7 @@ function HeldoutTable({ data, order }: { data: ResultsJson; order: string[] }) {
         <table className="w-full border-collapse text-left" aria-labelledby="held-h">
           <thead>
             <tr className="border-y border-ink-700 bg-ink-850">
-              <th scope="col" className="label px-4 py-2 font-medium">
+              <th scope="col" className="label px-4 py-2 font-semibold">
                 Condition
               </th>
               {(
@@ -902,7 +907,7 @@ function LeakItem({ leak, primary }: { leak: LeakJson; primary: boolean }) {
         <span className="ml-auto font-mono text-[11px] text-fg-muted">{categoryLabel(leak.category)}</span>
       </div>
       {primary && (
-        <p className={`mt-1.5 text-[13px] ${leak.reason ? "text-fg" : "font-semibold text-crit"}`}>
+        <p className={`mt-1.5 max-w-[60ch] text-[13px] ${leak.reason ? "text-fg" : "font-semibold text-crit"}`}>
           {leak.reason ? (
             <>
               <span className="text-fg-muted">Why: </span>
@@ -922,10 +927,10 @@ function LeakSummary({ cond, s, leaks }: { cond: string; s: ConditionJson; leaks
   return (
     <>
       <span className="text-[13px] font-semibold text-fg">{condLabel(cond)}</span>
-      <span className={`font-mono text-[12px] ${leaks.length ? "text-crit" : "text-good"}`}>
+      <span className={` text-[12px] ${leaks.length ? "text-crit" : "text-good"}`}>
         {leaks.length} case{leaks.length === 1 ? "" : "s"} got through
       </span>
-      <span className="font-mono text-[12px] text-fg-muted tabular-nums">
+      <span className=" text-[12px] text-fg-muted tabular-nums">
         attack success {s.hijacked.k}/{s.hijacked.n}, {ci(s.hijacked)}
       </span>
     </>
@@ -983,7 +988,7 @@ function Leaks({ data, order }: { data: ResultsJson; order: string[] }) {
                     ))}
                   </ul>
                 ) : (
-                  <p className="font-mono text-[12px] text-fg-muted">none observed</p>
+                  <p className=" text-[12px] text-fg-muted">none observed</p>
                 )}
                 {cond !== "A_no_defense" && leaks.length > 0 && (
                   <p className="mt-2 text-[12px] text-fg-muted">
