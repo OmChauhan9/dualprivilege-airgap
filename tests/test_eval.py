@@ -137,6 +137,12 @@ def test_run_suite_rejects_an_unknown_condition_name():
         run_suite(FakeLLM(), only=("A_typo",))
 
 
+@pytest.mark.parametrize("trials", [0, -1])
+def test_run_suite_rejects_fewer_than_one_trial(trials):
+    with pytest.raises(ValueError, match="trials must be at least 1"):
+        run_suite(FakeLLM(), trials)
+
+
 def test_report_still_renders_when_only_one_condition_ran():
     from airgap.eval.harness import report
 
