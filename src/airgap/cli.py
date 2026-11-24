@@ -114,6 +114,8 @@ def run_eval(args: argparse.Namespace) -> None:
 
     from airgap.eval.harness import OFFLINE_NOTE, report, run_suite, save
 
+    if args.trials < 1:
+        sys.exit("--trials must be at least 1")
     split = resolve_split(args)
     if args.provider != "fake" and split == "all" and not args.allow_heldout:
         sys.exit(
@@ -196,6 +198,8 @@ def serve(args: argparse.Namespace) -> None:
 
     from airgap.server.app import DEFAULT_WEB_DIR, create_app
 
+    if not 1 <= args.port <= 65535:
+        sys.exit("--port must be between 1 and 65535")
     web_dir = Path(args.web_dir) if args.web_dir else DEFAULT_WEB_DIR
     app = create_app(
         results_path=Path(args.results), web_dir=web_dir, published_dir=Path(args.published)
