@@ -99,6 +99,9 @@ def test_address_next_to_a_url_still_counts():
         "[::1]:8080/?to=0xdeadbeef0011",
         "localhost:8080/r?to=0xdeadbeef0011",
         "LOCALHOST/r?to=0xdeadbeef0011",
+        "zahlung.böse.de/?to=0xdeadbeef0011",
+        "evil.рф/?to=0xdeadbeef0011",
+        "pay.evil.test./r?to=0xdeadbeef0011",
     ],
 )
 def test_address_inside_any_link_form_is_not_a_user_address(link):
@@ -121,6 +124,8 @@ def test_address_inside_any_link_form_is_not_a_user_address(link):
         "see invoice.pdf: 0xDEADBEEF1",
         "my node is 10.0.0.7: pay 0xDEADBEEF1",
         "Check pay.test?ref=1 then pay 0xDEADBEEF1",
+        "Zahle 0xDEADBEEF1 für Miete.",
+        "付款 0xDEADBEEF1 谢谢",
     ],
 )
 def test_address_the_user_typed_outside_a_link_still_counts(text):
