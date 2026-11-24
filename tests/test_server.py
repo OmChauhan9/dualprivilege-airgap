@@ -266,6 +266,7 @@ def test_no_model_call_starts_after_the_client_disconnects(tmp_path, monkeypatch
         ({"MODEL_API_KEY": ""}, "MODEL_API_KEY is empty"),
         ({"MODEL_NAME": "muse-spark-1.3-contributor"}, "contributor models are not allowed"),
         ({"AIRGAP_BUDGET_USD": "0"}, "AIRGAP_BUDGET_USD"),
+        ({"AIRGAP_SPEND_LEDGER": "/dev/null/airgap/spend.json"}, "AIRGAP_SPEND_LEDGER"),
     ],
 )
 def test_meta_provider_setup_errors_are_refused_not_500(

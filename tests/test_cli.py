@@ -50,6 +50,11 @@ def test_serve_rejects_a_port_it_cannot_listen_on_with_a_clean_message(monkeypat
             "contributor models are not allowed",
         ),
         (["demo", "--provider", "meta"], {"AIRGAP_BUDGET_USD": "0"}, "AIRGAP_BUDGET_USD"),
+        (
+            ["demo", "--provider", "meta"],
+            {"AIRGAP_SPEND_LEDGER": "/dev/null/airgap/spend.json"},
+            "AIRGAP_SPEND_LEDGER",
+        ),
     ],
 )
 def test_main_turns_a_model_setup_error_into_a_clean_exit_message(
