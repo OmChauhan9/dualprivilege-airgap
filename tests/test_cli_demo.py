@@ -3,6 +3,7 @@
 import pytest
 
 from airgap import cli
+from airgap.world.scenarios import SCENARIOS
 
 
 def test_unknown_channel_is_refused_with_the_valid_choices():
@@ -10,6 +11,23 @@ def test_unknown_channel_is_refused_with_the_valid_choices():
         cli.main(["demo", "--channel", "nosuch"])
     message = str(stop.value.code)
     assert "unknown --channel 'nosuch'" in message and "css_display_none" in message
+
+
+@pytest.mark.parametrize("scenario", sorted(SCENARIOS))
+def test_every_scenario_runs_without_a_channel_flag(scenario, capsys):
+    cli.main(["demo", "--scenario", scenario])
+    assert "AIRGAPPED AGENT" in capsys.readouterr().out
+
+
+def test_steering_without_a_channel_flag_runs_the_benign_page(capsys):
+    cli.main(["demo", "--scenario", "steering"])
+    assert "channel: benign page" in capsys.readouterr().out
+
+
+def test_a_channel_the_scenario_lacks_is_still_refused():
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["demo", "--scenario", "steering", "--channel", "css_display_none"])
+    assert "unknown --channel 'css_display_none' for scenario steering" in str(stop.value.code)
 
 
 def test_named_attack_and_none_are_accepted(capsys):
