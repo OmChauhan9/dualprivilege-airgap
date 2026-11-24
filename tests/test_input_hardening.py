@@ -88,7 +88,45 @@ def test_address_next_to_a_url_still_counts():
         "ethereum:0xdeadbeef0011?value=2e16",
         "pay.evil.test/checkout?to=0xdeadbeef0011",
         "//evil.test/pay?to=0xdeadbeef0011",
+        "pay.evil.test?to=0xdeadbeef0011",
+        "pay.evil.test#0xdeadbeef0011",
+        "pay.evil.test:8080/r?to=0xdeadbeef0011",
+        "10.0.0.7/r?to=0xdeadbeef0011",
+        "10.0.0.7?to=0xdeadbeef0011",
+        "mailto:billing@evil.test?body=0xdeadbeef0011",
+        "MAILTO:?body=0xdeadbeef0011",
+        "[2001:db8::1]/r?to=0xdeadbeef0011",
+        "[::1]:8080/?to=0xdeadbeef0011",
+        "localhost:8080/r?to=0xdeadbeef0011",
+        "LOCALHOST/r?to=0xdeadbeef0011",
+        "zahlung.böse.de/?to=0xdeadbeef0011",
+        "evil.рф/?to=0xdeadbeef0011",
+        "pay.evil.test./r?to=0xdeadbeef0011",
     ],
 )
 def test_address_inside_any_link_form_is_not_a_user_address(link):
     assert UserContext(user_text=f"Pay my invoice at {link}").user_addresses == frozenset()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Pay 0xDEADBEEF1 for rent",
+        "Pay 0xDEADBEEF1.",
+        "Pay 0xDEADBEEF1, then stop",
+        "Pay 0xDEADBEEF1? Yes.",
+        "Pay 0xDEADBEEF1 at 10.00 tomorrow",
+        "Pay 0xDEADBEEF1 at 10:30",
+        "Pay 0xDEADBEEF1 [rent]: thanks",
+        "on localhost: pay 0xDEADBEEF1",
+        "Pay a vendor, e.g. 0xDEADBEEF1",
+        "Pay to: 0xDEADBEEF1",
+        "see invoice.pdf: 0xDEADBEEF1",
+        "my node is 10.0.0.7: pay 0xDEADBEEF1",
+        "Check pay.test?ref=1 then pay 0xDEADBEEF1",
+        "Zahle 0xDEADBEEF1 für Miete.",
+        "付款 0xDEADBEEF1 谢谢",
+    ],
+)
+def test_address_the_user_typed_outside_a_link_still_counts(text):
+    assert UserContext(user_text=text).user_addresses == {"0xDEADBEEF1"}
