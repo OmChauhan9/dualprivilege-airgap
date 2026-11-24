@@ -190,3 +190,69 @@ def test_planner_prompt_documents_what_choose_min_produces():
 
     assert '"field": "alias"' in PLAN_SYSTEM and '"field": "price"' in PLAN_SYSTEM
     assert "No other fields exist" in PLAN_SYSTEM
+
+
+# ---- an answer template the interpreter cannot render is rejected before anything runs ----
+
+PAY_CTX = UserContext(user_text="Pay alice 10 dollars.", payee_allowlist={"alice": "0xA11CE00001"})
+AMT = {"amt": {"lit": 10.5}}
+
+
+def _pay_then_answer(template, args):
+    return {
+        "steps": [
+            {"op": "pay", "payee": {"alias": "alice"}, "amount": {"lit": 10.5}, "memo": "x"},
+            {"op": "answer", "template": template, "args": args},
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    "template,args",
+    [
+        ("Paid {amt} to {who", AMT),  # unclosed brace
+        ("Paid {} to alice", AMT),  # positional field
+        ("Paid {0} to alice", AMT),  # positional field
+        ("Paid {amt:d} to alice", AMT),  # spec does not fit a float
+        ("Paid {amt!r} to alice", AMT),  # conversion
+        ("Paid {amt:{w}} to alice", {**AMT, "w": {"lit": 8}}),  # nested field in the spec
+        ("Paid {amt:.2f} to alice", {"amt": {"lit": "10.5"}}),  # number spec on text
+        ("Paid {amt.real} to alice", {"amt.real": {"lit": 10.5}}),  # attribute access
+    ],
+)
+def test_an_answer_template_that_cannot_render_is_rejected_and_nothing_is_paid(template, args):
+    from airgap.core.airgap import AirgapAgent
+    from airgap.models.fake import FakeLLM
+    from airgap.world.mock_web import MockWeb
+
+    plan = _pay_then_answer(template, args)
+    assert any("template" in p for p in validate_plan(Plan.model_validate(plan), PAY_CTX))
+    res = AirgapAgent(Chatty([json.dumps(plan)] * 2), FakeLLM(), MockWeb()).run(
+        PAY_CTX.user_text, PAY_CTX
+    )
+    assert res.ledger.payments == []
+    assert res.error and res.error.startswith("PlanRejected")
+
+
+@pytest.mark.parametrize(
+    "template,args",
+    [
+        ("Paid ${amt:,.2f} to alice", AMT),
+        ("Paid {amt:>8} to alice, {{braces}} kept", AMT),
+        ("Paid {n:d} invoices", {"n": {"lit": 3}}),
+        ("Paid {who:>10}", {"who": {"alias": "alice"}}),
+    ],
+)
+def test_answer_templates_the_interpreter_can_render_still_pass(template, args):
+    assert validate_plan(Plan.model_validate(_pay_then_answer(template, args)), PAY_CTX) == []
+
+
+def _answer_with_spec(spec):
+    args = {"x": {"var": "q", "field": "price_usd"}}
+    return {"op": "answer", "template": "{x:" + spec + "}", "args": args}
+
+
+def test_a_format_spec_is_checked_against_the_read_fields_type():
+    assert validate_plan(_plan(FETCH_A, READ_A, _answer_with_spec(",.2f")), CTX) == []
+    problems = validate_plan(_plan(FETCH_A, READ_A, _answer_with_spec("d")), CTX)
+    assert any("template" in p for p in problems)
