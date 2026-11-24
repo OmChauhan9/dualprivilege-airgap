@@ -172,6 +172,8 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
         elif isinstance(step, Pay):
             check_arg(step.payee, where)
             check_arg(step.amount, where)
+            if isinstance(step.amount, Lit) and isinstance(step.amount.lit, bool):
+                problems.append(f"{where}: amount must be a number, not {step.amount.lit}")
             if isinstance(step.payee, Lit):
                 addr = str(step.payee.lit)
                 if addr not in ctx.payee_allowlist.values() and addr not in ctx.user_addresses:

@@ -183,6 +183,8 @@ class PolicyEngine:
             return Decision("deny", ("P4",), "memo derived from untrusted content")
         if addr not in self.ctx.payee_allowlist.values() and addr not in self.ctx.user_addresses:
             return Decision("deny", ("P1",), f"payee {addr} is not on the allowlist")
+        if isinstance(amount.value, bool):  # float(True) is 1.0; a read bool field can get here
+            return Decision("deny", ("P2",), "amount is not a number")
         try:
             amt = float(amount.value)
         except (TypeError, ValueError):
