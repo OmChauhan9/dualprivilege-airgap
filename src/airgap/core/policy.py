@@ -58,13 +58,14 @@ _CAP_RE = re.compile(
 
 # Whole tokens only: a hex run glued to other word characters ("abc0x1234567") is not an address.
 # Anything a reader would take for a link: any scheme in any letter case, a protocol-relative
-# link, a bare host or IPv4 address followed by a path, query, fragment or port, or a wallet or mail
-# link (`ethereum:0x...`, `mailto:?body=0x...`). Wider than URL_RE on purpose: it only removes text
-# before addresses are extracted, so it can only shrink the set of addresses the user is taken to
-# have written.
+# link, a bare host, IPv4 address, bracketed IPv6 literal or `localhost` followed by a path, query,
+# fragment or port, or a wallet or mail link (`ethereum:0x...`, `mailto:?body=0x...`). Wider than
+# URL_RE on purpose: it only removes text before addresses are extracted, so it can only shrink the
+# set of addresses the user is taken to have written.
 _LINK_RE = re.compile(
     r"(?:\b[a-z][a-z0-9+.-]*://|//|\bwww\.|\b(?:ethereum|bitcoin|eip155|wc|mailto):"
-    r"|\b(?:(?:[a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3})[/?#:])\S*",
+    r"|(?:\b(?:(?:[a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}|localhost)"
+    r"|\[[0-9a-f.]*:[0-9a-f:.]*\])[/?#:])\S*",
     re.I,
 )
 _ADDRESS_RE = re.compile(r"(?<!\w)0x[0-9a-fA-F]{6,}(?!\w)")
