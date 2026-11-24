@@ -116,9 +116,14 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
     schema_of: dict[str, str] = {}  # typed variable -> reader schema name
 
     def check_field(arg: Var, where: str) -> None:
-        if arg.field is None:
-            return
         kind = kinds[arg.var]
+        if arg.field is None:
+            if kind == "choice":
+                problems.append(
+                    f"{where}: {arg.var} is a choose_min result; name one of its fields "
+                    f"{sorted(CHOICE_FIELDS)} (alias or price)"
+                )
+            return
         if kind == "doc":
             problems.append(f"{where}: {arg.var} is a fetched document and has no fields")
         elif kind == "choice" and arg.field not in CHOICE_FIELDS:
