@@ -95,6 +95,10 @@ def test_address_next_to_a_url_still_counts():
         "10.0.0.7?to=0xdeadbeef0011",
         "mailto:billing@evil.test?body=0xdeadbeef0011",
         "MAILTO:?body=0xdeadbeef0011",
+        "[2001:db8::1]/r?to=0xdeadbeef0011",
+        "[::1]:8080/?to=0xdeadbeef0011",
+        "localhost:8080/r?to=0xdeadbeef0011",
+        "LOCALHOST/r?to=0xdeadbeef0011",
     ],
 )
 def test_address_inside_any_link_form_is_not_a_user_address(link):
@@ -109,6 +113,9 @@ def test_address_inside_any_link_form_is_not_a_user_address(link):
         "Pay 0xDEADBEEF1, then stop",
         "Pay 0xDEADBEEF1? Yes.",
         "Pay 0xDEADBEEF1 at 10.00 tomorrow",
+        "Pay 0xDEADBEEF1 at 10:30",
+        "Pay 0xDEADBEEF1 [rent]: thanks",
+        "on localhost: pay 0xDEADBEEF1",
         "Pay a vendor, e.g. 0xDEADBEEF1",
         "Pay to: 0xDEADBEEF1",
         "see invoice.pdf: 0xDEADBEEF1",
