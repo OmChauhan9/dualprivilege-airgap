@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from airgap.core.audit import AuditLog
-from airgap.core.fetcher import URL_RE, Provenance, domain_of_url
+from airgap.core.fetcher import URL_RE, Provenance, domain_of_url, is_hostname
 from airgap.core.values import Tainted
 
 Verdict = Literal["allow", "deny", "confirm"]
@@ -165,6 +165,8 @@ class PolicyEngine:
             return Decision("deny", ("P5", "P4"), "url derived from untrusted content")
         domain = domain_of_url(str(url.value))
         if domain not in self.ctx.allowed_domains:
+            if not is_hostname(domain):
+                return Decision("deny", ("P5",), "the address has no valid domain the user named")
             return Decision("deny", ("P5",), f"domain {domain} not named by the user")
         return ALLOW
 

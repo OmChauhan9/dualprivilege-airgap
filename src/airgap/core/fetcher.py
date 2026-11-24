@@ -43,6 +43,21 @@ def registrable_domain(host: str) -> str:
     return ".".join(labels[-2:])
 
 
+_HOST_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", re.I)
+
+
+def is_hostname(host: str) -> bool:
+    """A well-formed DNS name or IP address. Python's URL parsing accepts any text as a host
+    (spaces included), so text a page chose may name a host in an error only if this holds."""
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
+        pass
+    labels = host.removesuffix(".").split(".")
+    return len(host) <= 253 and all(_HOST_LABEL.fullmatch(label) for label in labels)
+
+
 def domain_of_url(url: str) -> str:
     return registrable_domain(urlsplit(url).hostname or "")
 
@@ -90,9 +105,9 @@ def _decodable_charset(header_charset: str | None, body: bytes) -> str:
     try:
         name = codecs.lookup(declared).name
     except LookupError:
-        name = declared
+        raise FetchError("unsupported charset: the page declares an unknown one") from None
     if name not in _BROWSER_CHARSETS:
-        raise FetchError(f"unsupported charset {declared!r}")
+        raise FetchError(f"unsupported charset {name!r}")
     return _BROWSER_CHARSETS[name]
 
 
@@ -109,14 +124,18 @@ class Fetcher:
         visited: list[httpx.Response] = []
         current = url
         for _ in range(MAX_REDIRECTS + 1):
-            resp = self.client.get(current, follow_redirects=False)
+            try:
+                resp = self.client.get(current, follow_redirects=False)
+            except httpx.RemoteProtocolError as exc:
+                # httpx quotes what the server sent, such as a malformed Location header.
+                raise FetchError("the server sent a malformed response") from exc
             visited.append(resp)
             location = resp.headers.get("location")
             if not (resp.is_redirect and location):
                 break
             current = urljoin(str(resp.url), location)
             if urlsplit(current).scheme not in ("http", "https"):
-                raise FetchError(f"redirect to unsupported url: {current}")
+                raise FetchError("redirect to a url that is not http or https")
             if check_hop is not None:
                 check_hop(current)
         else:
