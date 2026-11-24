@@ -191,6 +191,75 @@ def test_meta_provider_is_refused_without_the_real_call_guard(client, monkeypatc
     assert "AIRGAP_ALLOW_REAL_CALLS" in resp.json()["detail"]
 
 
+def test_no_model_call_starts_after_the_client_disconnects(tmp_path, monkeypatch):
+    """Closing the tab must stop the run: with a real provider every orphaned call is billed."""
+    import asyncio
+    import threading
+
+    from starlette.types import Message
+
+    import airgap.server.app as appmod
+
+    first_call, release = threading.Event(), threading.Event()
+    roles: list[str] = []
+    workers: list[threading.Thread] = []
+
+    class Gated:
+        """Answers like FakeLLM, but holds the first call open until the client has gone."""
+
+        name = "gated"
+
+        def __init__(self) -> None:
+            self.inner = FakeLLM()
+
+        def complete(self, messages, *, role, schema=None):
+            roles.append(role)
+            if not first_call.is_set():
+                workers.append(threading.current_thread())
+                first_call.set()
+                release.wait(5)
+            return self.inner.complete(messages, role=role, schema=schema)
+
+    monkeypatch.setattr(appmod, "_make_model", lambda provider: Gated())
+    app = create_app(results_path=tmp_path / "eval.json", web_dir=tmp_path / "dist")
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},  # what uvicorn reports
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/run/stream",
+        "raw_path": b"/api/run/stream",
+        "root_path": "",
+        "query_string": b"scenario=identity&channel=css_display_none",
+        "headers": [(b"host", b"127.0.0.1:8000")],
+        "client": ("127.0.0.1", 50000),
+        "server": ("127.0.0.1", 8000),
+    }
+
+    async def main() -> None:
+        requested = False
+
+        async def receive() -> Message:
+            nonlocal requested
+            if not requested:
+                requested = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await asyncio.to_thread(first_call.wait, 5)  # the tab closes mid-call
+            return {"type": "http.disconnect"}
+
+        async def send(message: Message) -> None:
+            pass
+
+        await app(scope, receive, send)
+        release.set()  # the call already in flight may finish; no later one may start
+        await asyncio.to_thread(workers[0].join, 5)
+
+    asyncio.run(main())
+    assert not workers[0].is_alive()
+    assert roles == ["agent"]
+
+
 # ---- /api/results -----------------------------------------------------------------------
 
 
