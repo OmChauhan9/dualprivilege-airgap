@@ -19,7 +19,7 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run pyright
-      # FakeLLM only. No secrets, no network model calls.
+      # Offline test doubles only (FakeLLM and stubs). No secrets, no network model calls.
       - run: uv run pytest -q
 
   web:
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Skips until the UI exists so the required check stays green.
+      # Type-checks and builds the console.
       - if: hashFiles('web/package.json') != ''
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

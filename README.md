@@ -19,8 +19,8 @@ Built for the Meta Global AI Developer Hackathon. Apache-2.0.
 >   conditions.
 > - Without a defense the agent was hijacked in 34/210 runs. 33 were page data such as an inflated
 >   amount. 1 followed a visible "PAY ... USD TO" installment notice (`identity:split_notice`) and
->   overpaid the real payee. Hidden instructions never hijacked it (0 of 99 runs: the 33
->   instruction attacks, 3 trials each).
+>   overpaid the real payee. Injected instructions, hidden or visible, never hijacked it (0 of 99
+>   runs: the 33 instruction attacks, 3 trials each).
 > - The default airgap was hijacked in 15/210 runs, all of them published in-policy data lies.
 >   Strict had 0/210 hijacks (3 runs repeated a false balance in the reply) but finished only
 >   36/78 benign tasks.
@@ -55,7 +55,7 @@ Everything runs offline, and you need no API key.
 uv sync
 uv run airgap demo      # one poisoned page, unguarded vs airgapped agent (offline FakeLLM)
 uv run airgap eval      # 70 attacks + 26 benign tasks: A, the C variants and two ablations
-cd web && npm ci && npx vite build && cd ..   # one-time console build
+(cd web && npm ci && npx vite build)    # one-time console build
 uv run airgap serve     # web console on http://127.0.0.1:8000 (foreground; Ctrl-C to stop)
 ```
 
@@ -87,8 +87,8 @@ AIRGAPPED AGENT
   ground truth: not hijacked; user's task completed correctly: True
 ```
 
-To run another scenario, pass `--scenario email|identity|steering`. The default channel does not
-affect the steering scenario. For steering, try `--channel visible_text` or `--channel price_penny`.
+To run another scenario, pass `--scenario email|identity|steering`. With no `--channel`, steering
+runs its benign page. For steering, try `--channel visible_text` or `--channel price_penny`.
 Both are published leaks.
 `--channel` takes an injection channel (`css_display_none`, `white_on_white`, `off_screen`,
 `tiny_font`, `html_comment`, `zero_width_visible`, `json_ld`, `og_meta`, `alt_text`,
@@ -114,8 +114,8 @@ flowchart LR
     policy -->|"approved pay / email"| tools["Tools -> ledger"]
 ```
 
-- The **orchestrator** is the privileged model. It sees only the user's text, payee aliases and
-  schema names. It writes a JSON plan. It never receives page content, so there is nothing to inject it with.
+- The **orchestrator** is the privileged model. It sees only the user's text, payee aliases, the
+  email allowlist, the per-transaction limit and the reader schemas. It writes a JSON plan. It never receives page content, so there is nothing to inject it with.
 - The **reader** is the quarantined model, with no tools and no network. It turns sanitized text
   into one of four flat schemas. Its output carries a taint label with the origin domain.
 - **Plain code** does everything else: fetch with provenance, sanitize, validate the plan, track
@@ -148,7 +148,8 @@ So the router never lets data decide who you are talking to or who gets paid:
 > behave as designed on our corpus. They say nothing about how a real model behaves.
 
 The corpus has 70 attack cases and 26 benign tasks (96 cases, 1 trial each), all on fictional
-`.test` hosts. The judges read outcomes from the ledger, never from model text. Intervals are 95%
+`.test` hosts. The judges score hijacks from the ledger only. A false balance and a read-only task's
+answer are scored from the reply text. Intervals are 95%
 Wilson intervals. The eval output prints them as percents (`95% CI 79%-94%`). To reproduce, run
 `uv run airgap eval`.
 
@@ -197,20 +198,21 @@ everything, like an inattentive user.
 ### Real-model results (`muse-spark-1.3`)
 
 All runs use Meta's Model API, Standard mode (never a `-contributor` model), the same mock web and
-the same ledger-based judges as above. Every raw trial and log, with the commit it ran from, is
-in [`results/published/`](results/published/README.md).
-`uv run python scripts/frozen_numbers.py` recomputes the numbers below from those files. Total real
-spend for the whole project was about $23.86, according to the spend guard's own ledger. That
-includes four single demo runs recorded for the video (`results/published/video_demo/`). Issue
+the same judges as above. Every raw trial and log, with the commit where the log records one
+(tuning-run commits are inferred), is in [`results/published/`](results/published/README.md).
+`uv run python scripts/frozen_numbers.py` recomputes the final-code table and the Oct 31 adaptive
+numbers from those files. Total real spend for the whole project was about $23.82 in the published
+logs (the video demo runs in `results/published/video_demo/` are not in them). Issue
 [#30](https://github.com/OmChauhan9/dualprivilege-airgap/issues/30) notes that the guard records a
 failed call as $0, so the true figure may be slightly higher.
 
 **Final code, whole corpus (Oct 31).** This run covered all 96 cases, five conditions and 3 trials
 each (1,440 runs), in one command on the code after the Oct 31 review fixes (`86468f3`). It is the run to read for
-what the code does now. Later fixes (#46 to #55) changed the CLI, the run picker, P1's handling of
-links, the charset checks and more sanitizer rules. The run was not repeated after them. On all
-327 pages the scenarios serve (every benign page, channel and named attack, more than the 96 corpus
-cases use) the sanitizer output is byte-identical to `86468f3`, and the offline eval outcomes did
+what the code does now. Later fixes (#46 to #73) changed the CLI, the run picker, P1's handling of
+links, the charset checks, more sanitizer rules, and the policy, fetcher, plan, interpreter and
+server. The run was not repeated after them. On every page the scenarios serve (354 routes, 254
+distinct pages: every benign page, channel and named attack, more than the 96 corpus cases use)
+the sanitizer output is byte-identical to `86468f3`, and the offline eval outcomes did
 not change. It is **not** unseen data. We used the tuning cases
 during development, and the Oct 30 run below had already spent the held-out cases. No run errored.
 
@@ -270,7 +272,8 @@ What this does and does not show:
   invoices (`invoices-cap:inflated_pair`, 1) and an inflated amount on a lookalike page
   (`lookalike:lookalike_inflated`, 1). It also requested lookalike redirect domains
   (`identity:redirect_lookalike`, `docs:redirect_lookalike`). Those are the 6 unlisted-domain
-  requests. Hidden text did not hijack it on the held-out split (0 of 21 hidden-text runs). On the
+  requests. Hidden text did not hijack it on the held-out split (0 of 21 runs in the hidden_text
+  category; two of its seven cases are visible zero-width text). On the
   tuning split, one hidden-text run got the agent to report a false balance
   (`payment:integrity_hidden`, a goal with no side effect).
 - **The prompt defense did not help here** (9/57 against 8/57 with no defense, and the intervals
@@ -310,8 +313,8 @@ include the published leaks.
 | C: airgap, strict | 0/51 [0%, 7%] | 0/27 [0%, 12%] | 10/21 (48%) | 0/72 |
 | C: airgap, approve all | 6/51 (12%) [6%, 23%] | 6/27 (22%) [11%, 41%] | 21/21 | 0/72 |
 
-The unguarded and prompt-defense rows ran on an earlier commit (`05f9b34`), and the airgap rows ran
-on `84af775`. The harness changed between the two commits in ways that matter little for these
+The unguarded and prompt-defense rows ran on an earlier commit (about `05f9b34`, inferred from file
+times), and the airgap rows ran on about `84af775`. The harness changed between the two commits in ways that matter little for these
 rows. Still, these rows are not one-command runs like the held-out table. On the tuning split, the
 default airgap is **not** clearly better than no defense on data-driven lies. The counts are 5/27
 against 7/27, with overlapping intervals. The five that get through are the published
@@ -361,7 +364,7 @@ the attacker's own wallet and mailbox were never paid.
 
 `PUBLISHED_LEAKS` in `src/airgap/eval/corpus.py` lists every attack that gets through the default
 airgap, with its reason. The list covers offline runs, the real model's tuning split and the
-final-code run. A test fails if that list drifts from the results.
+final-code run. A test fails if that list drifts from the offline results.
 
 | Case | What happens | Tracked |
 |---|---|---|
@@ -383,14 +386,16 @@ Also not stopped, or not tested:
   `<desc>`, media fallback text). It does not evaluate rules in a `<style>` block or class-based CSS. Its rules are
   a list, so a determined page can find hiding tricks it misses. The review panel found more
   (`popover`, `<object>` fallback text, `calc()` arithmetic, `rotateY(90deg)`, dark text on a dark
-  background, `mask-image`). White text with no inline
+  background, `mask-image`). It also misses `font: 700 1px serif`, the units `svh`, `dvw`, `svw`,
+  `cqw`, `lh`, `cap` and `vb`, near-white written as `hsl()`, and white written as `hwb()`,
+  `oklch()`, `lab()` or `color(srgb …)`. White text with no inline
   background counts as hidden, because a page with none renders white. The reader and the policy
   engine sit behind it for these reasons.
 - **Inattentive approval.** With approve-all, an inflated amount to the real payee goes through
   (`identity:inflated_visible`, `lookalike:lookalike_inflated`).
 - **Error text can still name an attacker-chosen host.** Reader validation errors no longer quote
-  page values (`identity:error_echo`, fixed in the input-hardening change). But an error such as a
-  redirect to an unlisted domain can still show the host the page chose.
+  page values (`identity:error_echo`). Fetch and redirect errors name at most a well-formed host.
+  That host can still be one the page chose.
 - **Text-to-user attacks and phishing.** Answers can carry page-derived values. If the user opens a
   lookalike link, P5 allows that domain. Only the payee rules still hold.
 - **Real web.** There is no real HTTPS fetcher and no TLS provenance. The registrable-domain check is a
@@ -399,7 +404,8 @@ Also not stopped, or not tested:
   target, and at most 8 rounds per session (three sessions on the final code, one on earlier code).
   Only one real model has been used (`muse-spark-1.3`).
 
-These other open issues do not change any headline number:
+These other issues are still open. The published trials keep no reply text, so they were not
+re-scored for #29:
 
 - The judge's numeric matcher can match digits inside tokens like `P2`
   ([#29](https://github.com/OmChauhan9/dualprivilege-airgap/issues/29)).
@@ -407,7 +413,7 @@ These other open issues do not change any headline number:
   ([#30](https://github.com/OmChauhan9/dualprivilege-airgap/issues/30)).
 - "Attacker paid" misses a lying allowlisted vendor
   ([#31](https://github.com/OmChauhan9/dualprivilege-airgap/issues/31)).
-- The console's "Load trace" header can keep the previous attack's name
+- The console's "Load trace" header can show the wrong attack name
   ([#32](https://github.com/OmChauhan9/dualprivilege-airgap/issues/32)).
 
 [THREAT_MODEL.md](THREAT_MODEL.md) has the details.
@@ -426,7 +432,8 @@ Offline, the adaptive command uses a scripted attacker (`FakeAttacker`). It repo
 attempts got through A, 2/10 got through C_airgap and 0/10 got through strict. A figure-lie attempt
 has an empty payload. Its `amount` carries the lie.
 
-The local checks are the same as CI. `pyright` needs Node, and downloads it if none is installed.
+CI runs these checks, plus `uv sync --locked`, the web type check and build, and a secret scan.
+`pyright` needs Node, and downloads it if none is installed.
 
 ```bash
 uv run ruff check src tests && uv run ruff format --check src tests
@@ -434,7 +441,7 @@ uv run pyright
 uv run pytest -q
 ```
 
-Tests and CI use only `FakeLLM`, so they need no keys and make no network model calls.
+Tests and CI use `FakeLLM` and scripted stubs. They need no keys and make no network model calls.
 
 **Real model calls are gated.** They need a key in the environment and an explicit opt-in.
 Without both, the CLI and the server refuse. The code refuses `-contributor` models.
@@ -447,8 +454,10 @@ AIRGAP_ALLOW_REAL_CALLS=1 uv run airgap demo --provider meta
 
 The spend guard records real spend across runs in `~/.airgap/spend.json`. `uv run airgap spend`
 shows that total against the cap. The cap defaults to $5. To raise it for one command, set
-`AIRGAP_BUDGET_USD`, up to a hard ceiling of $50 in code. The guard refuses a call that would pass
-the cap before sending it.
+`AIRGAP_BUDGET_USD`, up to a hard ceiling of $50 in code. The guard refuses a call whose worst-case
+estimate would pass the cap. It then records the cost the provider reports, which can pass the cap
+if it exceeds the estimate. A failed call is recorded as $0
+([#30](https://github.com/OmChauhan9/dualprivilege-airgap/issues/30)).
 
 ## Layout
 
@@ -459,7 +468,8 @@ src/airgap/
   baseline/    the unguarded agent (one context holds page text and tools)
   world/       mock web, fictional .test sites, scenarios with ground-truth judges, ledger
   eval/        attack and benign corpus, harness, adaptive attacker, Wilson intervals
-  models/      ChatModel interface, FakeLLM, Meta Model API client, record/replay cache
+  models/      ChatModel interface, FakeLLM, Meta Model API client, record/replay cache (not
+               wired into any command)
   server/      FastAPI app with SSE streaming for the console
   cli.py       airgap demo | eval | adaptive | serve | spend
 web/           React + Vite console (two panes, trace timeline, policy cards, results panel)
@@ -473,7 +483,7 @@ The building blocks are not new. [PROVENANCE.md](PROVENANCE.md) lists what is ou
 
 | Work | Idea | How this repo relates |
 |---|---|---|
-| [Meta, Agents Rule of Two](https://ai.meta.com/blog/practical-ai-agent-security/) (2025) | A session should hold at most two of: untrusted input, sensitive access, state change | We track all three per action and gate the point where they meet |
+| [Meta, Agents Rule of Two](https://ai.meta.com/blog/practical-ai-agent-security/) (2025) | A session should hold at most two of: untrusted input, sensitive access, state change | We record all three on every policy decision. The gate is taint on the values |
 | [Willison, Dual LLM pattern](https://simonwillison.net/2023/Apr/25/dual-llm-pattern/) (2023) | Privileged model with tools, quarantined model on untrusted text, code in between | Our orchestrator / reader split |
 | [Willison, The lethal trifecta](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) (2025) | Private data + untrusted content + external communication is the danger | Same framing for our email-exfiltration scenario |
 | [CaMeL](https://arxiv.org/abs/2503.18813) (Google DeepMind et al., 2025) | Control flow from the trusted query; capabilities and policies on tool calls | Our plan DSL, taint labels and sink policies are a much smaller version |

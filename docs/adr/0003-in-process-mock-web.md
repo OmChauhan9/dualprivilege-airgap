@@ -9,5 +9,5 @@ Attacks are reproduced only against a local mock world with fictional `.test` do
 `MockWeb` serves host and path routes through `httpx.MockTransport`. The fetcher still uses real HTTP semantics (redirects, headers, status), so provenance logic is exercised for real.
 
 ## Consequences
-- Tests and CI are hermetic and fast, with no ports or sockets.
+- Tests are hermetic and fast, with no ports or sockets.
 - TLS provenance fields are not modeled; they are future work against a real HTTPS fetch.

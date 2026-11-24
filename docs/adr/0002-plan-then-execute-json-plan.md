@@ -3,10 +3,10 @@
 Status: accepted
 
 ## Context
-The Meta Model API accepts only `tool_choice: "auto"` and does not guarantee that tool arguments validate against their schema. Native tool calls would put tool execution inside the model loop, next to untrusted content.
+At the time of writing, the Meta Model API accepted only `tool_choice: "auto"` and did not guarantee that tool arguments validate against their schema. Native tool calls would put tool execution inside the model loop, next to untrusted content.
 
 ## Decision
-The orchestrator sees only the user's text and typed descriptions and emits a plan in a small DSL (`fetch`, `read`, `choose_min`, `pay`, `send_email`, `answer`). A static validator checks the plan before it runs (allowlisted payees, user-named domains, defined variables), with one repair round. An interpreter executes it.
+The orchestrator sees only the user's text and typed descriptions and emits a plan in a small DSL (`fetch`, `read`, `choose_min`, `pay`, `send_email`, `answer`). A static validator checks the plan before it runs (allowlisted payees, user-named domains, defined variables, the fields they name, and no boolean amounts), with one repair round. An interpreter executes it.
 
 ## Consequences
 - The orchestrator never receives page text, so there is nothing for it to be injected with.

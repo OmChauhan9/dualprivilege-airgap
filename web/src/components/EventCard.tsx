@@ -143,7 +143,7 @@ function AgentAction({ ev }: { ev: Envelope }) {
         </dl>
         <p className={followed ? "font-semibold text-crit" : "text-fg-muted"}>
           {followed
-            ? "Instruction came from the page, not the user. The tool ran immediately: nothing sits between the model and the side effect."
+            ? "The model says it followed a page notice. The tool ran immediately: nothing sits between the model and the side effect."
             : "The tool ran immediately, with no policy check."}
         </p>
       </Card>
@@ -384,7 +384,7 @@ export function RuleOfTwoMeter({ r2 }: { r2: RuleOfTwo }) {
         ))}
       </div>
       <span className="font-mono text-[11px] text-fg-faint">{lit}/3</span>
-      {lit === 3 && <span className="text-[11px] text-fg">all three: gated by policy</span>}
+      {lit === 3 && <span className="text-[11px] text-fg">all three present</span>}
     </div>
   );
 }

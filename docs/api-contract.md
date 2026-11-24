@@ -14,10 +14,11 @@ Each message is JSON:
 ```json
 {"seq": 0, "pane": "unguarded" | "airgap", "kind": "<event kind>", "data": {}}
 ```
-Event kinds come from `core/audit.py` and are passed through unchanged:
+Event kinds are passed through unchanged:
 `agent_action` (unguarded only), `plan`, `fetch`, `sanitize`, `reader_output`, `policy`,
-`tainted_control_flow`, `answer`, `error`. Field shapes are exactly the `emit(...)` keyword
-arguments in `core/interpreter.py` and `core/policy.py`.
+`tainted_control_flow`, `answer`, `error`. They are the `AuditLog.emit` calls in
+`core/interpreter.py`, `core/policy.py`, `core/airgap.py` (`plan`, `error`) and
+`baseline/vulnerable_agent.py` (`agent_action`, `error`). Data is those keyword arguments.
 
 The stream opens with one pane-less `start` event naming the run and the model per role, so the UI
 can label the provider and show which models were used:
@@ -45,8 +46,10 @@ The stream ends with `{"pane": null, "kind": "end", "data": {}}`. Every message,
 included, carries the same `seq`/`pane`/`kind`/`data` envelope.
 
 Errors before the stream starts: `404` unknown scenario, `400` channel not defined for the
-scenario, `403` when `provider=meta` and `AIRGAP_ALLOW_REAL_CALLS` is not `1` (the CLI's refusal
-message is the `detail`).
+scenario, `422` a bad or missing query value, `403` when `provider=meta` and real calls are off
+(`AIRGAP_ALLOW_REAL_CALLS` is not `1`) or the model cannot be set up (empty key, contributor model,
+bad budget or ledger), the case is held out, or the request did not come from the local console
+page. The refusal is the `detail`.
 
 ## `GET /api/results/runs`
 Every saved run the console can show: the local eval (`results/eval.json`, id `eval`), each
@@ -55,10 +58,10 @@ Every saved run the console can show: the local eval (`results/eval.json`, id `e
 `airgap serve --results` / `--published`. Symlinks are skipped. A file that cannot be read stays in
 the list with `error` set and empty counts.
 ```json
-{"default": "published:final_heldout", "runs": [{
-  "id": "published:final_heldout", "label": "Held-out split, run once (Oct 30; earlier code)",
-  "file": "final_heldout.json", "invalid": false, "reason": null,
-  "model": "muse-spark-1.3", "simulated": false, "n_cases": 24, "trials_per_case": 3,
+{"default": "published:final_corpus_v2", "runs": [{
+  "id": "published:final_corpus_v2", "label": "Final code, whole corpus (Oct 31; not unseen data)",
+  "file": "final_corpus_v2.json", "invalid": false, "reason": null,
+  "model": "muse-spark-1.3", "simulated": false, "n_cases": 96, "trials_per_case": 3,
   "incomplete": false, "error": null}]}
 ```
 - `label`: from a fixed table in `server/app.py` (`RUN_LABELS`); a file the table does not know shows
@@ -74,7 +77,8 @@ With `run`, the summary of that run; `run` must be an `id` from `/api/results/ru
 only a key into the map built from the folder scan and is never joined into a path, so anything
 else (an unknown id, `../../etc/passwd`, encoded variants) is `404`.
 
-Without `run`, the summary of the last saved eval (`results/eval.json`), or `404` if none. The file may be the bare
+Without `run`, the summary of the last saved eval (`results/eval.json`), or `404` if none. Unlike
+the run list, this path follows a symlinked file. The file may be the bare
 trial list that `eval.harness.save` writes, or `{"model": "...", "trials": [...]}`; `model` is
 `null` when the file does not record it. Every rate is `{"k", "n", "lo", "hi"}` with a 95% Wilson
 interval; a rate with `n: 0` means the file does not record that slice (files saved before
@@ -99,6 +103,9 @@ files in `results/published/`; their `.log` holds the readable report.
   "heldout": false, "flags": ["hijacked", "goal_reached"], "runs": 1, "trials": 1,
   "published": true, "reason": "known limitation (ADR 0001): ..."}]}}
 ```
+- `incomplete`: true for a run saved before it finished. Each condition also has `attacker_paid`,
+  `benign_flagged`, `policy_stopped`, `errors`, `attack_errors` and `hijacked_completed`. An
+  errored run counts as unknown, never safe.
 - `simulated`: `true` when `model` is an offline FakeLLM name (starts with `fake`, the CLI
   report's test), `false` for any other recorded model, `null` when `model` is `null`.
 - `data_driven_*` (`Summary.data_driven_*`): attacks in `DATA_DRIVEN` categories only, where
@@ -134,4 +141,5 @@ when null); a visible "offline fake model" badge when `provider=fake`.
 `web/public/replays/fake.json` holds every scenario x channel stream recorded with the FakeLLM
 (`uv run python -m airgap.server.replay`), keyed `"<scenario>:<channel|none>"`. The UI plays it at a
 fixed cadence for reproducible demo videos (`/?mode=replay&scenario=payment&channel=css_display_none&autoplay=1`).
-A test fails if the committed file drifts from what the pipeline streams.
+A test fails if a recorded stream no longer matches the pipeline. A missing scenario or channel is
+not caught.
