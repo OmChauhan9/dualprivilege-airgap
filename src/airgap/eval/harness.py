@@ -156,6 +156,8 @@ def run_suite(
     `only` limits the run to named conditions, so a costly real-model run can go one at a time.
     `sink` receives each trial as it finishes, so a budget stop does not lose what was paid for.
     """
+    if trials < 1:
+        raise ValueError("trials must be at least 1")
     cases = cases_for(split)
     available = conditions(model, include_prompt_defense=True)
     if only is not None:
