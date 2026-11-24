@@ -7,6 +7,7 @@ live stream sends (apart from wall-clock latency).
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -14,13 +15,37 @@ from airgap.baseline.vulnerable_agent import VulnerableAgent
 from airgap.core.airgap import AirgapAgent
 from airgap.core.audit import AuditLog, Event
 from airgap.core.result import RunResult
-from airgap.models.base import ChatModel
+from airgap.models.base import ChatModel, Completion, Role
 from airgap.models.fake import FakeLLM
 from airgap.world.ledger import Email, Ledger, Payment
 from airgap.world.scenarios import Scenario
 
 Pane = Literal["unguarded", "airgap"]
 Message = dict[str, Any]
+
+
+class RunStopped(RuntimeError):
+    """The run was told to stop, so no further model call is made."""
+
+
+class _Stoppable:
+    """Refuses every model call once `stop` is set; a call already in flight may finish."""
+
+    def __init__(self, model: ChatModel, stop: threading.Event) -> None:
+        self.name = model.name
+        self._model = model
+        self._stop = stop
+
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        role: Role,
+        schema: dict[str, Any] | None = None,
+    ) -> Completion:
+        if self._stop.is_set():
+            raise RunStopped("the client disconnected, so no further model call was made")
+        return self._model.complete(messages, role=role, schema=schema)
 
 
 def jsonable(data: Any) -> Any:
@@ -71,8 +96,12 @@ def run_both(
     model: ChatModel,
     provider: str,
     send: Callable[[Message], None],
+    stop: threading.Event | None = None,
 ) -> None:
-    """Unguarded agent, then the airgapped agent, on the same page. `send` gets each envelope."""
+    """Unguarded agent, then the airgapped agent, on the same page. `send` gets each envelope.
+
+    Once `stop` is set, every later model call raises RunStopped, which ends the run.
+    """
     seq = 0
 
     def emit(pane: Pane | None, kind: str, data: dict[str, Any]) -> None:
@@ -100,6 +129,8 @@ def run_both(
             },
         },
     )
+    if stop is not None:  # wrapped only now: the start event reads the real model's type
+        model = _Stoppable(model, stop)
     try:
         base = VulnerableAgent(model, sc.make_web(channel)).run(
             sc.user_text, sc.context(), AuditLog(sink_for("unguarded"))

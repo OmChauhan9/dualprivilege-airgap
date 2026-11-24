@@ -336,20 +336,25 @@ def create_app(
             _require_local_same_origin(request)
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[Message | None] = asyncio.Queue()
+        stop = threading.Event()
 
         def send(msg: Message) -> None:
             loop.call_soon_threadsafe(queue.put_nowait, msg)
 
         def work() -> None:
             try:
-                run_both(sc, None if channel == "none" else channel, model, provider, send)
+                run_both(sc, None if channel == "none" else channel, model, provider, send, stop)
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
         async def events() -> AsyncIterator[str]:
             threading.Thread(target=work, name=f"run-{scenario}", daemon=True).start()
-            while (msg := await queue.get()) is not None:
-                yield f"data: {json.dumps(msg)}\n\n"
+            try:
+                while (msg := await queue.get()) is not None:
+                    yield f"data: {json.dumps(msg)}\n\n"
+            finally:
+                # Starlette cancels or closes this generator when the client disconnects.
+                stop.set()
 
         return StreamingResponse(
             events(),
