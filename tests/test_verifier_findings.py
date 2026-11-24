@@ -105,6 +105,17 @@ def test_validate_plan_rejects_a_boolean_amount():
     assert any("amount" in p and "number" in p for p in problems)
 
 
+def test_validate_plan_rejects_a_boolean_candidate_price():
+    choose = {
+        "op": "choose_min",
+        "out": "c",
+        "candidates": [{"alias": "a", "value": {"lit": True}}],
+    }
+    plan = Plan.model_validate({"steps": [choose]})
+    problems = validate_plan(plan, UserContext(user_text="", payee_allowlist={"a": ADDR_40}))
+    assert any("price" in p and "number" in p for p in problems)
+
+
 def test_a_boolean_amount_from_a_read_field_is_denied():
     d = engine(f"Send 5 USD to {ADDR_40}").check_pay(trusted(ADDR_40), trusted(True), trusted(""))
     assert d.verdict == "deny" and "P2" in d.rules
