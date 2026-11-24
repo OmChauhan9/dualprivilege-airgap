@@ -20,7 +20,7 @@ class AuditLog:
         self.events: list[Event] = []
         self._sink = sink
 
-    def emit(self, kind: str, **data: Any) -> Event:
+    def emit(self, kind: str, /, **data: Any) -> Event:
         ev = Event(kind, data)
         self.events.append(ev)
         if self._sink:
