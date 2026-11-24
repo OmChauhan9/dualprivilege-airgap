@@ -165,6 +165,22 @@ def test_choice_values_expose_alias_and_price_only():
     assert any("value" in p and "alias" in p and "price" in p for p in problems)
 
 
+def test_a_choice_used_without_a_field_is_rejected_before_anything_runs():
+    shop_b = "0x5B0B000000000000000000000000000000000B01"
+    ctx = UserContext(
+        user_text=CTX.user_text, payee_allowlist={**CTX.payee_allowlist, "shop_b": shop_b}
+    )
+    choose = {
+        "op": "choose_min",
+        "out": "best",
+        "candidates": [{"alias": "shop_a", "value": {"var": "q", "field": "price_usd"}}],
+    }
+    pay = {"op": "pay", "payee": {"alias": "shop_b"}, "amount": {"lit": 10}}
+    bare = {"op": "answer", "template": "{x}", "args": {"x": {"var": "best"}}}
+    problems = validate_plan(_plan(FETCH_A, READ_A, choose, pay, bare), ctx)
+    assert any("best" in p and "alias" in p and "price" in p for p in problems)
+
+
 def test_a_field_on_a_fetched_document_is_rejected():
     assert any("document" in p for p in validate_plan(_plan(FETCH_A, _answer("d", "text")), CTX))
 
