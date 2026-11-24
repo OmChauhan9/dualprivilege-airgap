@@ -41,6 +41,14 @@ def make_model(provider: str) -> ChatModel:
     sys.exit(f"unknown provider {provider}")
 
 
+def _setup_model(provider: str) -> ChatModel:
+    """A model that cannot be set up exits with its reason, as the server's 403 does."""
+    try:
+        return make_model(provider)
+    except (RealCallsDisabled, ValueError, BudgetExceeded) as exc:
+        sys.exit(str(exc))
+
+
 def _fmt(ev: Event) -> str:
     d = ev.data
     if ev.kind == "fetch":
@@ -98,7 +106,7 @@ def demo(args: argparse.Namespace) -> None:
             f"Refusing a real-model demo of {case_id}: it is a held-out case and must stay "
             "unseen until the final evaluation. Pick another scenario or channel."
         )
-    model = make_model(args.provider)
+    model = _setup_model(args.provider)
     print(f"{BOLD}{sc.title}{RESET}\nuser: {sc.user_text}\nchannel: {channel or 'benign page'}")
     if args.provider == "fake":
         print(f"model: {model.name} (offline simulation, not a real model)")
@@ -126,7 +134,7 @@ def run_eval(args: argparse.Namespace) -> None:
             "unseen until the final run. Use --split tuning, or --split heldout deliberately, or "
             "pass --allow-heldout."
         )
-    model = make_model(args.provider)
+    model = _setup_model(args.provider)
     # The fake model does not simulate prompt defenses, so condition B is skipped offline.
     only = tuple(args.conditions.split(",")) if args.conditions else None
     trials: list = []
@@ -167,7 +175,7 @@ def run_adaptive_cmd(args: argparse.Namespace) -> None:
     if not 1 <= args.rounds <= adaptive.MAX_ROUNDS:
         sys.exit(f"--rounds must be between 1 and {adaptive.MAX_ROUNDS}")
     # Adaptive attacks are generated fresh, so they spend no held-out case (see THREAT_MODEL.md).
-    model = make_model(args.provider)
+    model = _setup_model(args.provider)
     attacker: ChatModel = adaptive.FakeAttacker() if args.provider == "fake" else model
     attempts: list[adaptive.Attempt] = []
     out = Path(args.out)
@@ -291,10 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
-    try:
-        args.func(args)
-    except RealCallsDisabled as exc:
-        sys.exit(str(exc))
+    args.func(args)
 
 
 if __name__ == "__main__":
