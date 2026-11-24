@@ -230,4 +230,4 @@ class Interpreter:
     def _answer(self, step: Answer) -> tuple[str, bool]:
         values = {name: self.resolve(arg) for name, arg in step.args.items()}
         text = step.template.format_map({k: v.value for k, v in values.items()})
-        return text, any(v.is_tainted for v in values.values())
+        return text, any(v.is_tainted or v.is_steered for v in values.values())
