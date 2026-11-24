@@ -66,3 +66,13 @@ def test_the_error_is_shown_to_the_model_so_it_can_retry():
     pay_ok = '{"action": "pay", "payee": "ledgerlens", "amount_usd": 20}'
     model, res = run([FETCH, pay_bad, pay_ok, '{"action": "finish", "text": "ok"}'])
     assert [p.amount_usd for p in res.ledger.payments] == [20.0]
+
+
+def test_an_action_with_its_own_kind_key_is_logged_not_a_crash():
+    pay = json.dumps({"action": "pay", "payee": "ledgerlens", "amount_usd": 20, "kind": "invoice"})
+    _, res = run([FETCH, pay, '{"action": "finish", "text": "paid"}'])
+    assert res.error is None
+    assert res.final_text == "paid"
+    assert [p.amount_usd for p in res.ledger.payments] == [20.0]
+    pay_ev = res.audit.of_kind("agent_action")[1]
+    assert pay_ev.data["kind"] == "invoice"
