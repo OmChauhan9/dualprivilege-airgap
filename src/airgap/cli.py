@@ -83,12 +83,15 @@ def _show(title: str, res: RunResult, sc: Scenario, channel: str | None) -> None
 def demo(args: argparse.Namespace) -> None:
     sc = SCENARIOS[args.scenario]
     known = ("none", *sc.channels, *sc.attacks)
-    if args.channel not in known:
+    requested = args.channel
+    if requested is None:
+        requested = "css_display_none" if "css_display_none" in sc.channels else "none"
+    if requested not in known:
         sys.exit(
-            f"unknown --channel {args.channel!r} for scenario {sc.id}; choose one of: "
+            f"unknown --channel {requested!r} for scenario {sc.id}; choose one of: "
             + ", ".join(known)
         )
-    channel = None if args.channel == "none" else args.channel
+    channel = None if requested == "none" else requested
     case_id = f"{args.scenario}:{channel or 'benign'}"
     if args.provider != "fake" and is_heldout(case_id):
         sys.exit(
@@ -232,8 +235,9 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--scenario", choices=sorted(SCENARIOS), default="payment")
     d.add_argument(
         "--channel",
-        default="css_display_none",
-        help="an injection channel or a named attack of the scenario, or 'none' for a benign page",
+        default=None,
+        help="an injection channel or a named attack of the scenario, or 'none' for a benign page "
+        "(default: css_display_none, or 'none' when the scenario has no such channel)",
     )
     d.add_argument("--provider", choices=["fake", "meta"], default="fake")
     d.set_defaults(func=demo)
