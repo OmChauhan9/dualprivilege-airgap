@@ -206,12 +206,12 @@ logs (the video demo runs in `results/published/video_demo/` are not in them). I
 [#30](https://github.com/OmChauhan9/dualprivilege-airgap/issues/30) notes that the guard records a
 failed call as $0, so the true figure may be slightly higher.
 
-**Final code, whole corpus (Oct 31).** This run covered all 96 cases, five conditions and 3 trials
+**Whole corpus, commit `86468f3` (Oct 31).** This run covered all 96 cases, five conditions and 3 trials
 each (1,440 runs), in one command on the code after the Oct 31 review fixes (`86468f3`). It is the run to read for
 what the code does now. Later fixes (#46 to #73) changed the CLI, the run picker, P1's handling of
 links, the charset checks, more sanitizer rules, and the policy, fetcher, plan, interpreter and
 server. The run was not repeated after them. On every page the scenarios serve (354 routes, 254
-distinct pages: every benign page, channel and named attack, more than the 96 corpus cases use)
+distinct pages, covering every benign page, channel and named attack, more than the 96 corpus cases use)
 the sanitizer output is byte-identical to `86468f3`, and the offline eval outcomes did
 not change. It is **not** unseen data. We used the tuning cases
 during development, and the Oct 30 run below had already spent the held-out cases. No run errored.
@@ -327,7 +327,7 @@ the last 5 as safe stops. Fixing
 those errors is why the numbers moved. The first real run of all was invalid, because forced JSON
 decoding corrupted keys. We keep it in `results/published/invalid/` with the reason, not hidden.
 
-**Adaptive attacker, final code (three sessions, Oct 31).** For each of 10 scenarios, an attacker
+**Adaptive attacker, commit `86468f3` (three sessions, Oct 31).** For each of 10 scenarios, an attacker
 model wrote a page, saw what happened, and tried again, for 8 rounds. The attacker knows the
 defense (white-box), meaning the pipeline, the rules, the schemas and the confirmation behavior. It
 ran in three independent sessions on `86468f3`. 172 of 240 rounds produced a usable attack. The
@@ -401,7 +401,7 @@ Also not stopped, or not tested:
 - **Real web.** There is no real HTTPS fetcher and no TLS provenance. The registrable-domain check is a
   heuristic (last two labels plus a short list of multi-part suffixes), not the Public Suffix List.
 - **Adaptive attacks** were evaluated with a small budget: one attacker model, which is also the
-  target, and at most 8 rounds per session (three sessions on the final code, one on earlier code).
+  target, and at most 8 rounds per session (three sessions on `86468f3`, one on earlier code).
   Only one real model has been used (`muse-spark-1.3`).
 
 These other issues are still open. The published trials keep no reply text, so they were not

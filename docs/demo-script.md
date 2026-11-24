@@ -179,7 +179,7 @@ Things the video must not say, because the repo does not support them: that real
 robust (one model, `muse-spark-1.3`, was tested, and data lies such as an inflated invoice amount
 still get through the default mode); that any attack class is fully stopped; that the 0/57
 held-out result means the pipeline is secure (see the README); that adaptive attackers cannot win
-(three sessions on the final code each beat the default mode on 6 of 10 scenarios, all with data
+(three sessions on `86468f3` each beat the default mode on 6 of 10 scenarios, all with data
 lies, and the attacker's own wallet was never paid); that it works on the real web (it is an in-process mock web with no TLS).
 
 ## 4. Fallback plan
