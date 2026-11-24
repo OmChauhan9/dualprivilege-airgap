@@ -133,8 +133,14 @@ class BudgetedModel:
         self.cap_usd = check_cap(cap_usd)
         self.ledger = ledger if ledger is not None else default_ledger()
         self.calls = 0
-        with self._locked():
-            self.spent_usd = read_ledger(self.ledger).spent_usd
+        try:
+            with self._locked():
+                self.spent_usd = read_ledger(self.ledger).spent_usd
+        except OSError as exc:
+            raise BudgetExceeded(
+                "refusing calls: the spend ledger (AIRGAP_SPEND_LEDGER) cannot be created or "
+                f"locked: {exc.strerror or type(exc).__name__}"
+            ) from exc
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
