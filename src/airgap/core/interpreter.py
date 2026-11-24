@@ -137,7 +137,7 @@ class Interpreter:
         def check_hop(next_url: str) -> None:
             hop = self.policy.check_fetch(trusted(next_url))
             if not self.policy.authorize("fetch_redirect", {"url": next_url}, hop):
-                result.blocked.append(f"redirect to {next_url}: {hop.reason}")
+                result.blocked.append(f"redirect: {hop.reason}")
                 raise FetchError(hop.reason)
 
         doc = self.fetcher.fetch(str(url.value), check_hop=check_hop)
