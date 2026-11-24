@@ -94,6 +94,22 @@ def test_non_finite_amounts_are_denied_and_never_poison_the_running_total(amount
     assert math.isfinite(e.spent_usd)
 
 
+# ---- a boolean is not an amount, though float(True) is 1.0 ------------------------------------
+
+
+def test_validate_plan_rejects_a_boolean_amount():
+    plan = Plan.model_validate(
+        {"steps": [{"op": "pay", "payee": {"lit": ADDR_40}, "amount": {"lit": True}}]}
+    )
+    problems = validate_plan(plan, ctx(f"Send 5 USD to {ADDR_40}"))
+    assert any("amount" in p and "number" in p for p in problems)
+
+
+def test_a_boolean_amount_from_a_read_field_is_denied():
+    d = engine(f"Send 5 USD to {ADDR_40}").check_pay(trusted(ADDR_40), trusted(True), trusted(""))
+    assert d.verdict == "deny" and "P2" in d.rules
+
+
 # ---- LOW 6: odd plans fail closed instead of crashing ----------------------------------------
 
 
