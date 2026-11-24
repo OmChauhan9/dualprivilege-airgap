@@ -147,6 +147,10 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
         elif isinstance(arg, Alias) and arg.alias not in ctx.payee_allowlist:
             problems.append(f"{where}: alias {arg.alias} is not on the user's allowlist")
 
+    def check_number(arg: Arg, what: str, where: str) -> None:
+        if isinstance(arg, Lit) and isinstance(arg.lit, bool):
+            problems.append(f"{where}: {what} must be a number, not {arg.lit}")
+
     for i, step in enumerate(plan.steps):
         where = f"step {i} ({step.op})"
         if isinstance(step, Fetch):
@@ -166,14 +170,14 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
         elif isinstance(step, ChooseMin):
             for cand in step.candidates:
                 check_arg(cand.value, where)
+                check_number(cand.value, f"candidate {cand.alias} price", where)
                 if cand.alias not in ctx.payee_allowlist:
                     problems.append(f"{where}: candidate {cand.alias} is not on the allowlist")
             kinds[step.out] = "choice"
         elif isinstance(step, Pay):
             check_arg(step.payee, where)
             check_arg(step.amount, where)
-            if isinstance(step.amount, Lit) and isinstance(step.amount.lit, bool):
-                problems.append(f"{where}: amount must be a number, not {step.amount.lit}")
+            check_number(step.amount, "amount", where)
             if isinstance(step.payee, Lit):
                 addr = str(step.payee.lit)
                 if addr not in ctx.payee_allowlist.values() and addr not in ctx.user_addresses:
