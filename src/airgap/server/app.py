@@ -21,6 +21,7 @@ from airgap.eval.corpus import DATA_DRIVEN, PUBLISHED_LEAKS, attack_cases, is_he
 from airgap.eval.harness import Trial, by_category, failures, summarize
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel, RealCallsDisabled
+from airgap.models.budget import BudgetExceeded
 from airgap.server.runner import Message, run_both
 from airgap.world.scenarios import SCENARIOS
 
@@ -36,12 +37,15 @@ _NO_UI = """<!doctype html><title>airgap</title>
 
 
 def _make_model(provider: str) -> ChatModel:
-    """Same AIRGAP_ALLOW_REAL_CALLS guard as the CLI; its refusal becomes a 403."""
+    """Same AIRGAP_ALLOW_REAL_CALLS guard as the CLI; its refusal becomes a 403.
+
+    So does a real model the server is not set up for (empty key, forbidden model, bad cap).
+    """
     from airgap import cli
 
     try:
         return cli.make_model(provider)
-    except RealCallsDisabled as exc:
+    except (RealCallsDisabled, ValueError, BudgetExceeded) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from None
 
 

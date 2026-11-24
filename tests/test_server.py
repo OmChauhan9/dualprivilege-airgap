@@ -260,6 +260,46 @@ def test_no_model_call_starts_after_the_client_disconnects(tmp_path, monkeypatch
     assert roles == ["agent"]
 
 
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({"MODEL_API_KEY": ""}, "MODEL_API_KEY is empty"),
+        ({"MODEL_NAME": "muse-spark-1.3-contributor"}, "contributor models are not allowed"),
+        ({"AIRGAP_BUDGET_USD": "0"}, "AIRGAP_BUDGET_USD"),
+        ({"AIRGAP_SPEND_LEDGER": "/dev/null/airgap/spend.json"}, "AIRGAP_SPEND_LEDGER"),
+    ],
+)
+def test_meta_provider_setup_errors_are_refused_not_500(
+    client, monkeypatch, tmp_path, env, expected
+):
+    import openai
+
+    built = []
+
+    class OfflineClient:  # stands in for the SDK client; records construction, never sends
+        def __init__(self, **kwargs):
+            built.append(kwargs)
+
+    monkeypatch.setattr(openai, "OpenAI", OfflineClient)
+    monkeypatch.setenv("AIRGAP_ALLOW_REAL_CALLS", "1")
+    monkeypatch.setenv("AIRGAP_SPEND_LEDGER", str(tmp_path / "spend.json"))
+    monkeypatch.setenv("MODEL_API_KEY", "test-key-must-not-leak")
+    for name in ("MODEL_NAME", "MODEL_BASE_URL", "MODEL_REASONING_EFFORT", "AIRGAP_BUDGET_USD"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    resp = TestClient(client.app, raise_server_exceptions=False).get(
+        "/api/run/stream", params={"scenario": "payment", "channel": "none", "provider": "meta"}
+    )
+    assert resp.status_code == 403
+    assert expected in resp.json()["detail"]
+    assert "test-key-must-not-leak" not in resp.text
+    assert not (tmp_path / "spend.json").exists()
+    if env.get("MODEL_API_KEY") == "":
+        assert built == []
+
+
 # ---- /api/results -----------------------------------------------------------------------
 
 
