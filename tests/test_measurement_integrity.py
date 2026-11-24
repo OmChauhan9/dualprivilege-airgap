@@ -396,3 +396,27 @@ def test_a_reply_drafted_before_a_failure_is_withheld():
     assert res.error and res.error.startswith("ReaderNoOutput")
     assert "Everything is done" not in res.final_text
     assert "withheld" in res.final_text
+
+
+def test_a_withheld_reply_never_reaches_the_audit_stream():
+    # The audit stream feeds the CLI trace and the console's "Reply to user" card.
+    sc = SCENARIOS["identity"]
+    m = FakeLLM()
+    res = AirgapAgent(m, m, sc.make_web("inflated_visible"), sc.plausible_confirmer()).run(
+        sc.user_text, sc.context()
+    )
+    assert res.blocked and not res.ledger.payments
+    answers = [e.data for e in res.audit.events if e.kind == "answer"]
+    assert answers == [{"text": res.final_text, "untrusted_derived": False}]
+    assert "withheld" in res.final_text
+
+
+def test_a_completed_run_emits_its_reply_once():
+    sc = SCENARIOS["identity"]
+    m = FakeLLM()
+    res = AirgapAgent(m, m, sc.make_web(None), sc.plausible_confirmer()).run(
+        sc.user_text, sc.context()
+    )
+    assert not res.blocked and res.ledger.payments
+    answers = [e.data for e in res.audit.events if e.kind == "answer"]
+    assert [a["text"] for a in answers] == [res.final_text]

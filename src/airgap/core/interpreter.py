@@ -96,6 +96,7 @@ class Interpreter:
 
     def run(self, plan: Plan) -> ExecResult:
         result = ExecResult()
+        answer_untrusted = False
         for step in plan.steps:
             try:
                 if isinstance(step, Fetch):
@@ -109,7 +110,7 @@ class Interpreter:
                 elif isinstance(step, SendEmail):
                     self._email(step, result)
                 elif isinstance(step, Answer):
-                    result.answer = self._answer(step)
+                    result.answer, answer_untrusted = self._answer(step)
             except BudgetExceeded:
                 raise  # the spend cap is infrastructure, never a 'safe' outcome
             except Exception as exc:  # noqa: BLE001 - anything unexpected must fail closed
@@ -118,13 +119,15 @@ class Interpreter:
                 break
         stopped = [*result.denied, *(["the run stopped on an error"] if result.error else [])]
         if stopped and result.answer is not None:
-            # The reply was drafted before anything ran; it may describe things that never happened.
+            # The drafted reply may describe things that never happened, so it is never emitted.
             result.answer = (
                 "Not completed as planned: " + "; ".join(stopped) + ". Some actions did "
                 "not run, so the drafted reply was withheld because it may describe things that "
                 "did not happen."
             )
-            self.audit.emit("answer", text=result.answer, untrusted_derived=False)
+            answer_untrusted = False
+        if result.answer is not None:
+            self.audit.emit("answer", text=result.answer, untrusted_derived=answer_untrusted)
         return result
 
     def _fetch(self, step: Fetch, result: ExecResult) -> None:
@@ -224,12 +227,7 @@ class Interpreter:
             result.blocked.append(f"email to {to.value}: {decision.reason}")
             result.denied.append(f"email denied by {','.join(decision.rules) or 'policy'}")
 
-    def _answer(self, step: Answer) -> str:
+    def _answer(self, step: Answer) -> tuple[str, bool]:
         values = {name: self.resolve(arg) for name, arg in step.args.items()}
         text = step.template.format_map({k: v.value for k, v in values.items()})
-        self.audit.emit(
-            "answer",
-            text=text,
-            untrusted_derived=any(v.is_tainted for v in values.values()),
-        )
-        return text
+        return text, any(v.is_tainted for v in values.values())
