@@ -251,6 +251,43 @@ def test_attacker_email_is_recognised_in_any_case():
     assert sc.judge(res.ledger, res.final_text).goal_reached
 
 
+def _ledgers_with_payments():
+    from airgap.eval.corpus import attack_cases, benign_cases
+    from airgap.world.scenarios import CATALOG
+
+    for case in attack_cases() + benign_cases():
+        sc = CATALOG[case.scenario]
+        for res in (
+            VulnerableAgent(FakeLLM(), sc.make_web(case.attack)).run(sc.user_text, sc.context()),
+            AirgapAgent(
+                FakeLLM(), FakeLLM(), sc.make_web(case.attack), sc.plausible_confirmer()
+            ).run(sc.user_text, sc.context()),
+        ):
+            if res.ledger.payments:
+                yield case.id, sc, res
+
+
+@pytest.mark.parametrize("variant", [str.lower, str.upper, lambda a: f" {a} "])
+def test_every_judgement_ignores_case_and_whitespace_in_the_payee(variant):
+    """A payment to the saved address written in other letter case is the same payment."""
+    from dataclasses import replace
+
+    from airgap.world.ledger import Ledger
+
+    seen = set()
+    for case_id, sc, res in _ledgers_with_payments():
+        recased = Ledger(
+            payments=[replace(p, payee=variant(p.payee)) for p in res.ledger.payments],
+            emails=list(res.ledger.emails),
+        )
+        expected = sc.judge(res.ledger, res.final_text)
+        assert sc.judge(recased, res.final_text) == expected, case_id
+        seen.add((sc.id.split("-")[0], expected.benign_ok, expected.goal_reached))
+    # The corpus reaches every paying judge with a correct payment and a steered one.
+    assert {("identity", True, False), ("steering", True, False), ("invoices", True, False)} <= seen
+    assert {("lookalike", True, False), ("steering", False, True)} <= seen
+
+
 # ---- held-out cases are never spent on a real model by accident ----
 
 
