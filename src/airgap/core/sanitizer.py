@@ -66,6 +66,7 @@ _NEAR_WHITE = {
     "mintcream": (245, 255, 250), "azure": (240, 255, 255), "seashell": (255, 245, 238),
     "honeydew": (240, 255, 240), "aliceblue": (240, 248, 255), "lavenderblush": (255, 240, 245),
 }  # fmt: skip
+_FONT_TOKEN = re.compile(r"""[^\s'"]+|"[^"]*"?|'[^']*'?""")
 _FONT_PREFIX_KEYWORDS = frozenset(
     {"normal", "italic", "oblique", "small-caps", "bold", "bolder", "lighter", "ultra-condensed",
      "extra-condensed", "condensed", "semi-condensed", "semi-expanded", "expanded",
@@ -75,6 +76,7 @@ _OFFSET_PROPS = ("left", "top", "right", "bottom", "text-indent", "margin-left",
 _SHORTHAND_OFFSETS = ("margin", "inset", "translate")
 _FAR_OFF_SCREEN_PX = -1000.0
 _TINY_FONT_PX = 5.0
+_INVISIBLE_ALPHA = 0.05
 _OFF_SCREEN_PX = -10.0
 
 
@@ -128,6 +130,10 @@ def _px(token: str) -> float | None:
 
 
 _COLOR_FUNCTIONS = ("rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color")
+_LEGACY_COMMA_FUNCTIONS = ("rgb", "rgba", "hsl", "hsla")
+# Channels a browser leaves unclamped are held to this bound. It is far outside every gamut, so the
+# color still clips the same way, and the conversion math cannot overflow.
+_CHANNEL_LIMIT = 1e6
 _DEGREES_PER_UNIT = {"": 1.0, "deg": 1.0, "grad": 0.9, "rad": 180 / math.pi, "turn": 360.0}
 Matrix = tuple[tuple[float, float, float], ...]
 _XYZ_D65_TO_LINEAR_SRGB: Matrix = (
@@ -224,11 +230,17 @@ def _apply(m: Matrix, v: tuple[float, float, float]) -> tuple[float, float, floa
     )
 
 
-def _channel(token: str, scale: float) -> float:
-    """A number, or a percentage of `scale`; the CSS `none` keyword is zero."""
+def _channel(
+    token: str, scale: float, lo: float = -_CHANNEL_LIMIT, hi: float = _CHANNEL_LIMIT
+) -> float:
+    """A number, or a percentage of `scale`, clamped to [lo, hi]; the CSS `none` keyword is zero."""
     if token == "none":
         return 0.0
-    return float(token[:-1]) / 100 * scale if token.endswith("%") else float(token)
+    m = _NUMBER.match(token)
+    if not m or m.group(2) not in ("", "%"):
+        raise ValueError(token)
+    value = float(m.group(1)) / 100 * scale if m.group(2) else float(m.group(1))
+    return min(hi, max(lo, value))
 
 
 def _hue(token: str) -> float:
@@ -237,7 +249,9 @@ def _hue(token: str) -> float:
     m = _NUMBER.match(token)
     if not m or m.group(2) not in _DEGREES_PER_UNIT:
         raise ValueError(token)
-    return float(m.group(1)) * _DEGREES_PER_UNIT[m.group(2)]
+    return (
+        min(_CHANNEL_LIMIT, max(-_CHANNEL_LIMIT, float(m.group(1)))) * _DEGREES_PER_UNIT[m.group(2)]
+    )
 
 
 def _hsl(hue: float, sat: float, light: float) -> tuple[float, float, float]:
@@ -261,12 +275,13 @@ def _lab_to_xyz_d50(lightness: float, a: float, b: float) -> tuple[float, float,
 def _srgb(space: str, parts: list[str]) -> tuple[float, float, float] | None:
     """The color as sRGB channels in 0..1, clipped to what an sRGB screen draws."""
     if space == "rgb":
-        rgb = (_channel(parts[0], 255) / 255, _channel(parts[1], 255) / 255,
-               _channel(parts[2], 255) / 255)  # fmt: skip
+        rgb = (_channel(parts[0], 255, 0, 255) / 255, _channel(parts[1], 255, 0, 255) / 255,
+               _channel(parts[2], 255, 0, 255) / 255)  # fmt: skip
     elif space == "hsl":
-        rgb = _hsl(_hue(parts[0]), _channel(parts[1], 100) / 100, _channel(parts[2], 100) / 100)
+        sat, light = _channel(parts[1], 100, 0, 100), _channel(parts[2], 100, 0, 100)
+        rgb = _hsl(_hue(parts[0]), sat / 100, light / 100)
     elif space == "hwb":
-        white, black = _channel(parts[1], 100) / 100, _channel(parts[2], 100) / 100
+        white, black = _channel(parts[1], 100, 0, 100) / 100, _channel(parts[2], 100, 0, 100) / 100
         if white + black >= 1:
             gray = white / (white + black)
             rgb = (gray, gray, gray)
@@ -275,9 +290,9 @@ def _srgb(space: str, parts: list[str]) -> tuple[float, float, float] | None:
             rgb = tuple(c * (1 - white - black) + white for c in (r, g, b))
     elif space in ("lab", "lch", "oklab", "oklch"):
         ok = space.startswith("ok")
-        lightness = _channel(parts[0], 1.0 if ok else 100.0)
+        lightness = _channel(parts[0], 1.0 if ok else 100.0, 0, 1.0 if ok else 100.0)
         if space.endswith("ch"):
-            chroma = _channel(parts[1], 0.4 if ok else 150.0)
+            chroma = _channel(parts[1], 0.4 if ok else 150.0, 0)
             hue = math.radians(_hue(parts[2]))
             a, b = chroma * math.cos(hue), chroma * math.sin(hue)
         else:
@@ -325,6 +340,8 @@ def _alpha_and_rgb(color: str) -> tuple[float, tuple[float, float, float] | None
     fn = re.match(r"^([a-z]+)\((.*)\)$", color)
     if not fn or fn.group(1) not in _COLOR_FUNCTIONS:
         return None
+    if "," in fn.group(2) and fn.group(1) not in _LEGACY_COMMA_FUNCTIONS:
+        return None  # only the legacy functions take commas; a browser drops any other
     channels, slash, alpha_text = fn.group(2).partition("/")
     parts = [p for p in re.split(r"[\s,]+", channels.strip()) if p]
     space = parts.pop(0) if fn.group(1) == "color" and parts else fn.group(1).rstrip("a")
@@ -333,7 +350,7 @@ def _alpha_and_rgb(color: str) -> tuple[float, tuple[float, float, float] | None
     if len(parts) < 3:
         return None
     try:
-        alpha = _channel(alpha_text.strip(), 1.0) if alpha_text.strip() else 1.0
+        alpha = _channel(alpha_text.strip(), 1.0, 0, 1) if alpha_text.strip() else 1.0
         rgb = _srgb(space, parts[:3])
     except ValueError:
         return None
@@ -355,7 +372,8 @@ def _background(decls: Declarations) -> str | None:
                 value,
             ):
                 parsed = _alpha_and_rgb(token)
-                if parsed is not None and parsed[0] > 0:  # a transparent layer shows the one below
+                # A (nearly) transparent layer shows the one below.
+                if parsed is not None and parsed[0] > _INVISIBLE_ALPHA:
                     return token
     return None
 
@@ -372,25 +390,25 @@ def _effective_background(tag: Tag) -> str:
 
 def _font_shorthand_size(tokens: list[str]) -> float | None:
     """The size in a `font` shorthand: the first token after style, variant, weight and stretch."""
+    sizes = [_px(t.split("/")[0]) for t in tokens]
+    size_follows = [False] * (len(tokens) + 1)
+    for i in range(len(tokens) - 1, -1, -1):
+        size_follows[i] = size_follows[i + 1] or sizes[i] is not None
     for i, token in enumerate(tokens):
         m = _NUMBER.match(token)
         if token in _FONT_PREFIX_KEYWORDS or (m and m.group(2) in ("deg", "grad", "rad", "turn")):
             continue
         # A bare number is the weight only when a size follows it. Alone, it is read as the size.
-        if (
-            m
-            and not m.group(2)
-            and float(m.group(1)) >= 1
-            and any(_px(t.split("/")[0]) is not None for t in tokens[i + 1 :])
-        ):
+        if m and not m.group(2) and float(m.group(1)) >= 1 and size_follows[i + 1]:
             continue
-        return _px(token.split("/")[0])
+        return sizes[i]
     return None
 
 
 def _font_size_px(decls: Declarations) -> list[float]:
     sizes = [_px(v) for v in decls.get("font-size", [])]
-    sizes += [_font_shorthand_size(v.split()) for v in decls.get("font", [])]
+    # A quoted family is its own token even when glued to the size, as in `1px'serif'`.
+    sizes += [_font_shorthand_size(_FONT_TOKEN.findall(v)) for v in decls.get("font", [])]
     return [s for s in sizes if s is not None]
 
 
@@ -417,7 +435,7 @@ def _opacity_zero(value: str) -> bool:
         number = float(value[:-1]) / 100 if value.endswith("%") else float(value)
     except ValueError:
         return False
-    return number <= 0.05
+    return number <= _INVISIBLE_ALPHA
 
 
 def _clipped(decls: Declarations) -> bool:
@@ -494,7 +512,7 @@ def _transparent_text(decls: Declarations) -> bool:
                     return True
                 continue
             parsed = _alpha_and_rgb(value)
-            if parsed is not None and parsed[0] <= 0.05:
+            if parsed is not None and parsed[0] <= _INVISIBLE_ALPHA:
                 return True
     return False
 
@@ -562,7 +580,7 @@ def _hidden_channel(tag: Tag) -> str | None:
     ):
         return "collapsed"
     if tag.name in _SVG_TEXT and _any(
-        decls, "fill", lambda v: (_alpha_and_rgb(v) or (1.0,))[0] <= 0.05
+        decls, "fill", lambda v: (_alpha_and_rgb(v) or (1.0,))[0] <= _INVISIBLE_ALPHA
     ):
         return "transparent_text"
     if not decls:
