@@ -136,6 +136,9 @@ def test_address_inside_any_link_form_is_not_a_user_address(link):
         "Pay this wallet:\r\n0xDEADBEEF1",
         "Pay\t0xDEADBEEF1",
         "付款 0xDEADBEEF1。",
+        "Pay 0xDEADBEEF1—thanks",
+        "Pay 0xDEADBEEF1–",
+        "Rent—0xDEADBEEF1",
     ],
 )
 def test_address_the_user_typed_outside_a_link_still_counts(text):
@@ -159,6 +162,8 @@ def test_address_the_user_typed_outside_a_link_still_counts(text):
         "%200xdeadbeef0011",
         "&0xdeadbeef0011",
         "a:0xdeadbeef0011",
+        "0xdeadbeef0011-pay.test/r",  # an ASCII hyphen is a host character, unlike a dash
+        "pay-0xdeadbeef0011",
     ],
 )
 def test_address_glued_to_link_characters_is_not_a_user_address(lure):
