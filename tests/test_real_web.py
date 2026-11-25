@@ -281,6 +281,47 @@ def test_N8_a_slow_site_fails_at_the_deadline(monkeypatch, handler):
         server.shutdown()
 
 
+def test_N8_a_name_lookup_that_hangs_fails_at_the_deadline(monkeypatch):
+    monkeypatch.setattr(fetcher_module, "FETCH_DEADLINE_S", 0.5)
+    release = threading.Event()
+
+    def hang(host: str, port: int) -> list[str]:
+        release.wait(5)
+        return ["93.184.216.34"]
+
+    try:
+        start = time.monotonic()
+        with pytest.raises(FetchError, match="too long"):
+            Fetcher(PublicTransport(resolve=hang)).fetch("http://slow.test/")
+        assert time.monotonic() - start < 2.0
+    finally:
+        release.set()
+
+
+def test_the_default_transport_round_trips_a_request_on_public_httpx_and_httpcore_api():
+    # Fails if an httpx or httpcore upgrade changes the request or response mapping.
+    def page(h: http.server.BaseHTTPRequestHandler) -> None:
+        body = PAGE.encode()
+        h.send_response(200)
+        h.send_header("content-type", "text/html; charset=utf-8")
+        h.send_header("content-length", str(len(body)))
+        h.end_headers()
+        h.wfile.write(body)
+
+    server, port = local_server(page)
+    t = PublicTransport(private_hosts={"127.0.0.1"})
+    try:
+        resp = t.handle_request(httpx.Request("GET", f"http://127.0.0.1:{port}/a?b=c"))
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "text/html; charset=utf-8"
+        assert b"".join(resp.stream) == PAGE.encode()  # type: ignore[arg-type]
+        resp.close()
+    finally:
+        t.close()
+        server.shutdown()
+    assert not isinstance(t, httpx.HTTPTransport)  # no private httpx attribute is swapped
+
+
 # ---- N9: ports and scheme on a hop ---------------------------------------------------------
 
 

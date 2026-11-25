@@ -535,13 +535,45 @@ def test_D13_a_run_started_on_another_thread_is_not_seen_so_limits_stay_per_run(
     "kw,shape",
     [
         ({"pay": lambda payee, amount_usd, memo: None}, "pay(p: Payment)"),
-        ({"pay": lambda payee, amount_usd=0.0, memo="": None}, "pay(p: Payment)"),
+        ({"pay": lambda *, p: None}, "pay(p: Payment)"),
         ({"send_email": lambda: None}, "send_email(e: Email)"),
         ({"confirm": lambda kind, args, decision: True}, "confirm(c: Confirmation)"),
     ],
 )
 def test_an_old_style_function_is_refused_when_the_guard_is_built(kw, shape):
     with pytest.raises(TypeError, match=re.escape(shape)):
+        Airgap(planner=FakeLLM(), **kw)
+
+
+def test_a_confirm_callable_with_one_argument_is_accepted_and_n_still_refuses():
+    def confirm(c: Confirmation, answer: str = "n") -> object:
+        return answer
+
+    bank = Bank()
+    res = guard(Planner(*FETCH_AND_PAY), bank, confirm=confirm).run(f"Pay acme the bill at {BILL}")
+    assert bank.calls == []
+    (ev,) = [e for e in res.audit.of_kind("policy") if e.data["action"] == "pay"]
+    assert ev.data["verdict"] == "confirm" and ev.data["approved"] is False
+
+
+@pytest.mark.parametrize(
+    "kw,argument",
+    [
+        ({"payees": {"x": ""}}, "payees"),
+        ({"payees": {"x": "not-an-address"}}, "payees"),
+        ({"payees": {"": WALLET}}, "payees"),
+        ({"email_recipients": {"nobody"}}, "email_recipients"),
+        ({"email_recipients": {"a b@example.test"}}, "email_recipients"),
+        ({"domains": {"not a host"}}, "domains"),
+        ({"per_payment_usd": 0}, "per_payment_usd"),
+        ({"per_run_usd": float("inf")}, "per_run_usd"),
+        ({"per_payment_usd": float("nan")}, "per_payment_usd"),
+        ({"per_payment_usd": 300, "per_run_usd": 200}, "per_payment_usd"),
+        ({"private_hosts": {"bad host"}}, "private_hosts"),
+    ],
+)
+def test_bad_configuration_is_refused_naming_the_argument(kw, argument):
+    with pytest.raises((ValueError, TypeError), match=argument):
         Airgap(planner=FakeLLM(), **kw)
 
 
