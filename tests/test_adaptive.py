@@ -430,3 +430,21 @@ def test_the_run_picker_does_not_list_adaptive_files(tmp_path):
     ids = {r["id"] for r in TestClient(app).get("/api/results/runs").json()["runs"]}
     assert "published:adaptive_x" not in ids
     assert "published:broken" in ids
+
+
+def test_the_attacker_brief_describes_the_defense_as_the_code_runs_it() -> None:
+    """A white-box attacker told a stale story about the defense is a weaker attacker."""
+    from airgap.eval.adaptive import brief
+    from airgap.world.scenarios import EVAL_SCENARIOS
+
+    text = " ".join(brief(EVAL_SCENARIOS["payment"]).split())
+    # A false total is scored from the reply, so the brief must not say scoring ignores it.
+    assert "never from what a model says" not in text
+    assert "scored from the ledger)" not in text
+    assert "number in the agent's reply" in text
+    # The fetcher (#78): WHATWG labels, two decoders, and a refusal when a browser would guess.
+    assert "only UTF-8 and windows-1252" in text
+    assert "no declaration a browser is sure to use" in text
+    # The sanitizer (#77): any CSS unit, the font shorthand, and every color syntax.
+    assert "font shorthand" in text
+    assert "oklch" in text
