@@ -1,5 +1,7 @@
 """Inline-CSS hiding is found after parsing, so variants a browser also hides are stripped."""
 
+import time
+
 import pytest
 
 from airgap.core.airgap import AirgapAgent
@@ -270,3 +272,94 @@ def test_comment_in_a_presentation_attribute_does_not_hide_a_trick():
 
 def test_comment_inside_a_number_does_not_join_it_into_a_hiding_value():
     assert "KEEP" in sanitize('<p style="position:absolute;left:-1/**/9999px">KEEP</p>').text
+
+
+# A browser clips a channel far outside the gamut, so these render white. Page input never raises.
+@pytest.mark.parametrize(
+    "style",
+    [
+        "color:color(srgb 1e308 1 1)",
+        "color:lab(1e200 0 0)",
+        "color:oklab(1e200 0 0)",
+        "color:color(a98-rgb 1e300 1 1)",
+        "color:color(srgb 1e999 1 1)",
+    ],
+)
+def test_huge_color_channels_are_clipped_like_a_browser(style):
+    out = sanitize(f'<p>Visible 42</p><span style="{style}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize(
+    "style",
+    [
+        "color:lch(50 1e300 1e300)",
+        "color:oklch(1e308 1e308 1e308deg)",
+        "color:hsl(1e999deg 1e308% 1e308%)",
+        "color:hwb(1e308 1e308% 1e308%)",
+        "color:color(xyz 1e308 -1e308 1e308)",
+        "color:color(prophoto-rgb 1e308 1e308 1e308 / 1e308)",
+        "color:color(rec2020 -1e308 1e308 1)",
+        "color:rgb(1e999 -1e999 1e308)",
+        "color:#fff;background:lab(1e200 -1e200 1e200)",
+    ],
+)
+def test_huge_color_channels_never_raise(style):
+    sanitize(f'<p style="{style}">x</p>')
+
+
+def test_font_shorthand_with_many_tokens_is_linear():
+    style = "font:" + " 1 bold" * 30_000 + " serif"
+    start = time.perf_counter()
+    sanitize(f'<p style="{style}">x</p>')
+    assert time.perf_counter() - start < 1.0
+
+
+# A nearly transparent background shows the page below it, so it is not a dark background.
+@pytest.mark.parametrize(
+    "background",
+    [
+        "rgba(0,0,0,0.001)",
+        "lab(0 0 0 / 0.001)",
+        "oklch(0 0 0 / 0.001)",
+        "color(srgb 0 0 0 / 0.001)",
+        "hsl(0 0% 0% / 0.001)",
+        "rgb(0 0 0 / 0.04)",
+    ],
+)
+def test_white_text_on_a_nearly_transparent_background_is_stripped(background):
+    out = sanitize(
+        f'<p>Visible 42</p><span style="color:white;background:{background}">SECRET PAYLOAD</span>'
+    )
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+# Only rgb(), rgba(), hsl() and hsla() accept commas. A browser drops any other color with commas.
+@pytest.mark.parametrize(
+    "background",
+    ["lab(0,0,0)", "oklch(0,0,0)", "hwb(0,0%,100%)", "color(srgb,0,0,0)", "lch(0, 0, 0)"],
+)
+def test_comma_background_in_a_modern_color_function_counts_as_absent(background):
+    out = sanitize(
+        f'<p>Visible 42</p><span style="color:white;background:{background}">SECRET PAYLOAD</span>'
+    )
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize("color", ["lab(100,0,0)", "oklch(1,0,0)", "color(srgb,1,1,1)"])
+def test_comma_color_in_a_modern_color_function_is_dropped_and_text_kept(color):
+    assert "KEEP" in sanitize(f'<p style="color:{color}">KEEP</p>').text
+
+
+# A quoted family glued to the size is still a separate token, so the size is read.
+@pytest.mark.parametrize("style", ["font:700 1px'serif'", "font:bold 0.5px&quot;a b&quot;"])
+def test_font_size_glued_to_a_quoted_family_is_read(style):
+    out = sanitize(f'<p>Visible 42</p><span style="{style}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize(
+    "style", ["color:white;background:rgba(0,0,0,0.5)", "color:white;background:lab(0 0 0 / 0.5)"]
+)
+def test_white_text_on_a_half_transparent_dark_background_is_kept(style):
+    assert "KEEP" in sanitize(f'<p style="{style}">KEEP</p>').text
