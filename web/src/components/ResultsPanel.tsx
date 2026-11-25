@@ -432,7 +432,7 @@ function Headline({ data, order }: { data: ResultsJson; order: string[] }) {
         <I.Alert className="mr-1.5 inline align-[-2px] text-warn" />
         {dd > 0 ? (
           <>
-            <strong>{all - dd} of the {all} attacks</strong> hide an instruction in the page, which is easy for any design that
+            <strong>{all - dd} of the {all} attack runs</strong> carry an instruction in the page, mostly hidden, which is easy for any design that
             keeps pages away from the planner, so the overall rate flatters.{" "}
             <strong>Read the data-driven subset ({dd}) first</strong>: there success needs a lie, not an obeyed instruction.
           </>

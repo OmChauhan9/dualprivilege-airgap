@@ -9,7 +9,7 @@ flowchart TB
     user["User<br/>request text, payee and email allowlists, spend limits"]
 
     subgraph privileged["Privileged side: never sees page content"]
-        orch["Orchestrator (LLM)<br/>input: user text, aliases, schema names"]
+        orch["Orchestrator (LLM)<br/>input: user text, aliases, email allowlist,<br/>per-transaction limit, reader schemas"]
         val["Plan validator (code)<br/>allowlisted payees, user-named domains"]
     end
 
@@ -59,20 +59,22 @@ flowchart TB
 |---|---|---|---|---|
 | Orchestrator | `src/airgap/core/orchestrator.py` | yes | no: `plan()` takes only the user text and `UserContext` | no: emits a JSON plan |
 | Plan validator | `src/airgap/core/plan.py` (`validate_plan`) | no | no | no |
-| Interpreter | `src/airgap/core/interpreter.py` | no | holds handles and typed values | only through the policy engine |
+| Interpreter | `src/airgap/core/interpreter.py` | no | holds fetched documents and typed values. It is plain code, so holding page text is safe | only through the policy engine |
 | Policy engine | `src/airgap/core/policy.py` | no | no, only labeled arguments and provenance | decides allow / deny / confirm |
-| Fetcher | `src/airgap/core/fetcher.py` | no | yes (raw bytes) | GET requests to approved URLs only |
+| Fetcher | `src/airgap/core/fetcher.py` | no | yes (raw bytes) | makes GET requests. In the airgap pipeline the interpreter asks the policy engine before the first request and before every redirect hop |
 | Sanitizer | `src/airgap/core/sanitizer.py` | no | yes | no |
 | Reader | `src/airgap/core/reader.py` | yes | yes (sanitized text) | no: no tools, output validated against a schema |
 
 ## One request, step by step
 
 1. **Plan.** The orchestrator gets the user's text, the payee aliases (not addresses), the email
-   allowlist, the spend limit and the names of four reader schemas. It writes a plan in a small
+   allowlist, the per-transaction limit and the four reader schemas with their fields. It never
+   sees page text. It writes a plan in a small
    DSL: `fetch`, `read`, `choose_min`, `pay`, `send_email`, `answer`
    ([ADR 0002](adr/0002-plan-then-execute-json-plan.md)).
 2. **Validate.** `validate_plan` rejects literal payees that are not allowlisted or written by the
-   user, fetches to domains the user did not name, unknown schemas and undefined variables. The
+   user, literal fetch URLs on domains the user did not name (other URLs are checked at run time
+   by P5), unknown schemas and undefined variables. The
    orchestrator gets one repair round. Its feedback is built from the plan and the user context
    only, never from page content.
 3. **Fetch.** The interpreter asks the policy engine before each request. The fetcher follows
@@ -91,8 +93,9 @@ flowchart TB
    label: tainted payees, memos and email fields are denied (P4); a tainted or steered amount goes
    to the confirmation gate. Every amount must also fit the limits, any cap the user stated in their
    request, and, with no cap, a task budget for page-supplied amounts (P2).
-7. **Act and score.** Approved actions run against the world tools and land in the ledger. The
-   evaluation reads outcomes from the ledger, never from what a model says.
+7. **Act and score.** Approved actions run against the world tools and land in the ledger. Side
+   effects are scored from the ledger. A false balance and read-only task answers are scored from
+   the reply text.
 
 ## Why identity cannot move a payee
 

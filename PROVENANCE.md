@@ -37,6 +37,42 @@ The git history is the record (`git log`). Merged pull requests:
 | [#34](https://github.com/OmChauhan9/dualprivilege-airgap/pull/34) | feat(eval): adaptive attacker evaluation (rung 3) |
 | [#36](https://github.com/OmChauhan9/dualprivilege-airgap/pull/36) | docs: correct the claim that a stated cap stops the invoice leaks |
 | [#37](https://github.com/OmChauhan9/dualprivilege-airgap/pull/37) | docs: publish the real adaptive-attacker run |
+| [#38](https://github.com/OmChauhan9/dualprivilege-airgap/pull/38) | docs: refresh stale text found by the final sweep |
+| [#39](https://github.com/OmChauhan9/dualprivilege-airgap/pull/39) | fix: input hardening (A, B, D, E, F) |
+| [#40](https://github.com/OmChauhan9/dualprivilege-airgap/pull/40) | fix(policy): confirm an email recipient chosen by page data (P6) |
+| [#41](https://github.com/OmChauhan9/dualprivilege-airgap/pull/41) | fix(policy): an address inside a pasted URL is not a user-written payee (P1) |
+| [#42](https://github.com/OmChauhan9/dualprivilege-airgap/pull/42) | fix(fetcher): refuse charsets a browser would decode differently |
+| [#43](https://github.com/OmChauhan9/dualprivilege-airgap/pull/43) | fix(sanitizer): strip invisible characters outside category Cf |
+| [#44](https://github.com/OmChauhan9/dualprivilege-airgap/pull/44) | fix(sanitizer): parse inline CSS before checking hiding rules |
+| [#45](https://github.com/OmChauhan9/dualprivilege-airgap/pull/45) | docs(eval): describe the final pipeline in the attacker brief |
+| [#46](https://github.com/OmChauhan9/dualprivilege-airgap/pull/46) | fix(cli): refuse a demo --channel the scenario does not define |
+| [#47](https://github.com/OmChauhan9/dualprivilege-airgap/pull/47) | fix(server): leave adaptive files out of the run picker |
+| [#48](https://github.com/OmChauhan9/dualprivilege-airgap/pull/48) | docs(readme): fix the stumbles a clean-clone check found |
+| [#49](https://github.com/OmChauhan9/dualprivilege-airgap/pull/49) | results: freeze the final-code corpus run and adaptive sessions |
+| [#50](https://github.com/OmChauhan9/dualprivilege-airgap/pull/50) | docs: cite the frozen final-code results in the README, threat model, console and video script |
+| [#51](https://github.com/OmChauhan9/dualprivilege-airgap/pull/51) | docs: prose pass on README and THREAT_MODEL |
+| [#52](https://github.com/OmChauhan9/dualprivilege-airgap/pull/52) | fix(policy): ignore addresses inside links of any letter case or without a scheme (P1) |
+| [#53](https://github.com/OmChauhan9/dualprivilege-airgap/pull/53) | fix(fetcher): check the byte-order mark and the meta charset, as a browser does |
+| [#54](https://github.com/OmChauhan9/dualprivilege-airgap/pull/54) | fix(sanitizer): close the hiding variants the review panel proved |
+| [#55](https://github.com/OmChauhan9/dualprivilege-airgap/pull/55) | fix(cli): the demo names its model and prints no color codes when piped |
+| [#56](https://github.com/OmChauhan9/dualprivilege-airgap/pull/56) | docs: fix the Claude-only review panel's findings (rounds 1 and 2) |
+| [#57](https://github.com/OmChauhan9/dualprivilege-airgap/pull/57) | style(console): restyle the web console after a Hallmark audit, layout kept |
+| [#58](https://github.com/OmChauhan9/dualprivilege-airgap/pull/58) | feat(web): a front-door landing page (Blueprint, frozen real-model figures) |
+| [#59](https://github.com/OmChauhan9/dualprivilege-airgap/pull/59) | style(console): neutral chips, labelled fields, data-driven shift in the results header |
+| [#60](https://github.com/OmChauhan9/dualprivilege-airgap/pull/60) | feat(web): the landing page as the ledger receipt, in the console's design system |
+| [#61](https://github.com/OmChauhan9/dualprivilege-airgap/pull/61) | build(deps): Bump soupsieve from 3.0.4 to 4.0 |
+| [#62](https://github.com/OmChauhan9/dualprivilege-airgap/pull/62) | fix(cli): airgap demo --scenario steering runs again instead of refusing its own default channel |
+| [#63](https://github.com/OmChauhan9/dualprivilege-airgap/pull/63) | fix(cli): name a bad --trials or --port in one line instead of a traceback |
+| [#64](https://github.com/OmChauhan9/dualprivilege-airgap/pull/64) | fix(policy): stop a scheme-less, IPv4 or mailto lure link from making its wallet a valid payee |
+| [#65](https://github.com/OmChauhan9/dualprivilege-airgap/pull/65) | fix(interpreter): stop showing a withheld draft reply in the trace and console |
+| [#66](https://github.com/OmChauhan9/dualprivilege-airgap/pull/66) | fix(server,cli): a real run with a missing key or bad budget gets a clear refusal, not a 500 or a traceback |
+| [#67](https://github.com/OmChauhan9/dualprivilege-airgap/pull/67) | fix(audit): a model action with a kind key is scored instead of crashing the baseline run |
+| [#68](https://github.com/OmChauhan9/dualprivilege-airgap/pull/68) | fix(judge): stop scoring a correct payment to a re-cased saved address as a hijack |
+| [#69](https://github.com/OmChauhan9/dualprivilege-airgap/pull/69) | fix(plan): reject a bare choice and a boolean amount before they crash a run or pay 1 USD |
+| [#70](https://github.com/OmChauhan9/dualprivilege-airgap/pull/70) | fix(plan): reject answer templates that would crash the run after a payment |
+| [#71](https://github.com/OmChauhan9/dualprivilege-airgap/pull/71) | fix(server): stop calling the model once the console tab is closed |
+| [#72](https://github.com/OmChauhan9/dualprivilege-airgap/pull/72) | fix(interpreter): warn the user when a page's price picked the vendor named in the reply |
+| [#73](https://github.com/OmChauhan9/dualprivilege-airgap/pull/73) | fix(fetch): stop pages writing their own text into the error and blocked list the user sees |
 
 The core pipeline (mock world, unguarded baseline, airgap, policy engine) and the first evaluation
 harness were the first two commits on `main`, before the PR workflow started.
@@ -67,12 +103,14 @@ These ideas come from the work cited below. We use them; we did not invent them.
   `.test` hosts.
 - **Built for Meta's Model API.** The client (`src/airgap/models/meta.py`) targets `muse-spark-1.3`
   in Standard mode. **Real-model runs are done and published** in `results/published/`: the final
-  held-out run, the tuning runs, and one small adaptive-attacker run, all on `muse-spark-1.3`. The
+  whole-corpus run (`final_corpus_v2`), the held-out run, the tuning runs, and four
+  adaptive-attacker sessions, all on `muse-spark-1.3`. The
   offline `FakeLLM` numbers are a plumbing check, not evidence about real models.
 - **A live trace.** Every plan, fetch, sanitizer removal, reader output, taint flag and policy
   decision streams to a side-by-side console.
 - **Published leaks.** Every attack that gets through is listed with its reason and a tracking
-  issue or decision record, and a test fails if the list drifts from the results.
+  issue or decision record, and a test fails if the list drifts from the offline results. The
+  real-model file matches it today but is not tested.
 
 ## Prior art
 

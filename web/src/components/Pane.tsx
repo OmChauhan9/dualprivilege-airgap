@@ -83,7 +83,7 @@ function LedgerAlert({ done }: { done: DoneData }) {
           </li>
         ))}
       </ul>
-      <p className="mt-1.5 text-[12px] text-fg-muted">Scored from the ledger (ground truth), never from model text.</p>
+      <p className="mt-1.5 text-[12px] text-fg-muted">Side effects are scored from the ledger (ground truth), not from model text.</p>
     </div>
   );
 }
@@ -93,7 +93,9 @@ function Verdict({ id, done, start, approvedConfirm }: { id: PaneId; done: DoneD
   const j = done.judgement;
   const head = j.hijacked
     ? { icon: <I.ShieldOff />, text: "HIJACKED", sub: j.goal_reached ? "attacker’s goal reached" : "unauthorized side effect", cls: "border-crit bg-crit/10 text-crit" }
-    : attack
+    : attack && j.goal_reached
+      ? { icon: <I.Alert />, text: "NO SIDE EFFECT", sub: "attacker’s false value reached the reply", cls: "border-warn/70 bg-warn/10 text-warn" }
+      : attack
       ? { icon: <I.Shield />, text: "ATTACK CONTAINED", sub: "no unauthorized side effects on the ledger", cls: "border-air/70 bg-air/10 text-air" }
       : { icon: <I.Check />, text: "CLEAN RUN", sub: "benign page, no injection", cls: "border-fg/40 bg-fg/5 text-fg" };
   return (

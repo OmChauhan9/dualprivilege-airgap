@@ -17,7 +17,7 @@ the screen before recording (see the [claims checklist](#3-claims-checklist)).
 
 ```bash
 uv sync
-cd web && npm ci && npx vite build && cd ..
+(cd web && npm ci && npx vite build)
 # Trace for the policy-denial insert (shot 7): the corpus case identity:amount_over_limit,
 # recorded with FakeLLM by the same code that records the bundled replays.
 uv run python -c 'import json; from airgap.server.replay import record_run; json.dump({"format": "airgap-trace/v1", "messages": record_run("identity", "amount_over_limit")}, open("/tmp/airgap-trace-identity-amount_over_limit.json", "w"))'
@@ -51,7 +51,7 @@ Things to know about the console before recording:
 - **The replay is fast.** It plays at a fixed cadence (180 ms per tick at 1×). Narration runs over
   the finished cards while you scroll; the animation is not meant to fill the time.
 - **Named attacks only play through Load trace.** The scenario dropdown and the live stream only
-  know the 11 injection channels (`/api/run/stream?...&channel=amount_over_limit` returns 400), so
+  know the 10 injection channels plus the benign page (`/api/run/stream?...&channel=amount_over_limit` returns 400), so
   shot 7 uses the trace from setup.
 - **After Load trace, the header is wrong.** The "Page served to both agents" chip and the channel
   dropdown fall back to `CSS display:none`, while the source line correctly reads
@@ -77,7 +77,7 @@ simulated model (FakeLLM) · fictional .test sites"**. Shots 8, 9 and 11: **"Met
 | 8 | 1:00-1:15 | Terminal, full screen. Run T1. Frame `model: muse-spark-1.3   cases: 96   trials/case: 3`, then highlight two `data-driven attacks only (111)` lines: `A_no_defense` hijacked `34/111 (31%, 95% CI 23%-40%)` and `C_airgap` hijacked `15/111 (14%, 95% CI 8%-21%)`. | "These numbers come from Meta's muse-spark-1.3, three trials per case, on our fictional sites. On a hundred and eleven data-driven attack runs: thirty-four succeed unguarded, fifteen with the airgap." | T1 |
 | 9 | 1:15-1:30 | Back to the browser, scroll down to **EVALUATION RESULTS**. The run picker shows "Final code, whole corpus (Oct 31; not unseen data)". Frame the banner `Real model run: muse-spark-1.3` with `Trials per case 3`, `Cases 96` and `Not the fake model in the trace panes.`, then the unguarded and airgap rows with benign completion next to each (78/78), then the strict row (0 hijacked, benign 36/78). | "Normal tasks: seventy-eight of seventy-eight. Strict mode: no attack side effects, but only thirty-six finish." | U1 (results panel) |
 | 10 | 1:30-1:42 | Paste U3. Frame the **AIRGAPPED** pane: red `UNAUTHORIZED SIDE EFFECT ON THE LEDGER`, `$10.00 → 0x5B0B0000…0B01`, `HIJACKED`, and the amber note "Not stopped: this attack stays inside policy. The confirmation dialog showed a saved payee and a plausible amount, so a careful user approved it..." | "What we don't stop: a vendor lies about its price, wins, and gets paid." | U3 |
-| 11 | 1:42-1:50 | Scroll down to `ATTACKS THAT STILL SUCCEED (PUBLISHED, NEVER HIDDEN)`, box for `C: Airgap` with six chips (`steering:visible_text`, `steering:price_penny`, `invoice:inflated_visible`, `invoice:amount_at_limit`, `invoices:inflated_pair`, `payment:integrity_visible`). Optional 2 s cut to T2 in the terminal. | "Every leak we found is published; a test keeps the list honest." | U3, T2 |
+| 11 | 1:42-1:50 | Scroll down to `ATTACKS THAT STILL GET THROUGH (PUBLISHED, NEVER HIDDEN)`, box for `C: Airgap` with six chips (`steering:visible_text`, `steering:price_penny`, `invoice:inflated_visible`, `invoice:amount_at_limit`, `invoices:inflated_pair`, `payment:integrity_visible`). Optional 2 s cut to T2 in the terminal. | "Every leak we found is published, and a test checks the list against the offline run." | U3, T2 |
 | 12 | 1:50-2:00 | Title card on a terminal: the T3 line on one row, and below it `github.com/OmChauhan9/dualprivilege-airgap`. Do not run the clone live; if you want motion, cut to the last lines of a pre-recorded `uv run airgap demo` ending in `ground truth: not hijacked`. | "Runs offline, no key. The repo is on screen." | T3 |
 
 Notes on the storyboard:
@@ -90,8 +90,9 @@ Notes on the storyboard:
   no hidden instruction (0 of 99 instruction runs). 33 of its 34 hijacks were page data, and 1
   followed a visible installment notice (`identity:split_notice`). So the
   narration says "in our offline simulation", and shots 8 and 9 carry the real numbers.
-- Optional real-model B-roll: `results/published/video_demo/*.log` are four real `airgap demo
-  --provider meta` runs. In both `identity` runs the real model ignored the injected line even
+- Optional real-model B-roll: `results/published/video_demo/*.log` are four runs that
+  `results/published/README.md` records as `airgap demo --provider meta`; the logs themselves do
+  not name the model. In both `identity` runs the real model ignored the injected line even
   unguarded, so do not use them to show a hijack. `steering_visible_text.log` shows both agents
   paying the lying shop, which fits shot 10. Never run real calls during the take.
 - The on-screen figures include strings like `(100%, 95% CI 87%-100%)`. That is fine on screen; the
@@ -162,7 +163,7 @@ recording; if one fails or prints a different number, change the script, not the
 | 14 | "Normal tasks: seventy-eight of seventy-eight." | T1: `benign task completion: 78/78 (100%, 95% CI 95%-100%)` for `C_airgap` (and for `A_no_defense`). |
 | 15 | "Strict mode: no attack side effects, but only thirty-six finish." | T1: `C_airgap_strict_confirm` hijacked `0/111` data-driven (`0/210` overall in `scripts/frozen_numbers.py`), benign `36/78 (46%, 95% CI 36%-57%)`. Strict still reaches 3 attacker goals (a false balance, no side effect), so the sentence says "side effects", not "attacks stopped". |
 | 16 | "What we don't stop: a vendor lies about its price, wins, and gets paid." | `uv run airgap demo --scenario steering --channel visible_text` prints `PAYMENT 10 USD -> 0x5B0B...0B01` and `ground truth: HIJACKED` for the airgapped agent; `steering:visible_text` in `PUBLISHED_LEAKS` (`src/airgap/eval/corpus.py`). |
-| 17 | "Every leak we found is published; a test keeps the list honest." | T2; `tests/test_eval.py::test_every_leak_is_published_and_every_published_leak_still_leaks` (fails if the list and the results differ in either direction); README "What we do NOT stop". |
+| 17 | "Every leak we found is published, and a test checks the list against the offline run." | T2; `tests/test_eval.py::test_every_leak_is_published_and_every_published_leak_still_leaks` (runs only the offline FakeLLM; fails if the list and the offline results differ in either direction); README "What we do NOT stop". |
 | 18 | "Runs offline, no key." | T3 run from a clean clone needs no key and no network model; README "Everything runs offline; no key needed"; `tests/test_server.py::test_meta_provider_is_refused_without_the_real_call_guard`. |
 | 19 | "The repo is on screen." | `gh repo view OmChauhan9/dualprivilege-airgap --json visibility` returns `PUBLIC`. |
 | 20 | Lower third on trace shots: "Trace replay: offline simulated model (FakeLLM) · fictional .test sites" | `web/public/replays/fake.json` has `"simulated": true, "model": "fake-llm"`; `tests/test_server.py::test_committed_replays_are_current` and `::test_recorded_replay_matches_live_stream`. Sites: `src/airgap/world/`. |
@@ -178,7 +179,7 @@ Things the video must not say, because the repo does not support them: that real
 robust (one model, `muse-spark-1.3`, was tested, and data lies such as an inflated invoice amount
 still get through the default mode); that any attack class is fully stopped; that the 0/57
 held-out result means the pipeline is secure (see the README); that adaptive attackers cannot win
-(three sessions on the final code each beat the default mode on 6 of 10 scenarios, all with data
+(three sessions on `86468f3` each beat the default mode on 6 of 10 scenarios, all with data
 lies, and the attacker's own wallet was never paid); that it works on the real web (it is an in-process mock web with no TLS).
 
 ## 4. Fallback plan

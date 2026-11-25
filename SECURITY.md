@@ -14,8 +14,10 @@ Reports are read and answered as time allows.
 In scope: the router in `src/airgap/` (fetcher, sanitizer, reader, plan validation, interpreter,
 policy engine), the demo server in `src/airgap/server/`, and the console in `web/`. Examples that
 matter most: a path by which untrusted page text reaches the orchestrator or a payment, email or
-URL sink without passing the policy engine; a way to make a real model call spend money without
-the spend cap; a path traversal or injection in the demo server or console.
+URL sink without passing the policy engine; a way to make a real model call skip the spend check;
+a path traversal or injection in the demo server or console. The check compares an estimate with
+the cap before each call. A provider that reports more usage than the estimate can push the total
+past the cap.
 
 Out of scope: attacks that the project already lists under "What we do NOT stop" in the README
 and in `THREAT_MODEL.md`; compromised user devices; model-weight backdoors; denial of service

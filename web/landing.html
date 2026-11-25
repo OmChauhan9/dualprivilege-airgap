@@ -63,7 +63,7 @@
         <h2 id="how-h">How the airgap paid $20</h2>
         <p class="lead-in">The same replay, the airgap side, in order.</p>
         <ol class="steps">
-          <li><h3>The planner saw only your words</h3><span class="lead" aria-hidden="true"></span><code>pay payee=@ledgerlens amount=b.amount_due_usd</code></li>
+          <li><h3>The planner saw your request and settings, never the page</h3><span class="lead" aria-hidden="true"></span><code>pay payee=@ledgerlens amount=b.amount_due_usd</code></li>
           <li><h3>The fetcher named the site</h3><span class="lead" aria-hidden="true"></span><code>origin ledgerlens.test, redirects 0</code></li>
           <li><h3>The sanitizer stripped hidden text</h3><span class="lead" aria-hidden="true"></span><code>css_display_none, og:title; 398 → 61 characters</code></li>
           <li><h3>A tool-less reader typed two fields</h3><span class="lead" aria-hidden="true"></span><code>amount_due_usd 20.0, billing_period "monthly"</code></li>
@@ -96,7 +96,7 @@
           <p><a href="https://github.com/OmChauhan9/dualprivilege-airgap#what-we-do-not-stop">Every published leak</a></p>
         </div>
         <figure class="receipt receipt--real" data-source="video_demo/steering_visible_text.log">
-          <figcaption>Airgap, real muse-spark-1.3, one recorded run</figcaption>
+          <figcaption>Airgap, one recorded real-model run (video_demo/steering_visible_text.log)</figcaption>
           <ol class="entries">
             <li class="entry entry--attack"><span class="payee"><code>0x5B0B0000…0B01</code> ShopB, confirmed once</span><span class="lead" aria-hidden="true"></span><span class="fig">$10.00</span></li>
           </ol>
@@ -112,7 +112,7 @@
           <tbody>
             <tr><td><code>uv sync</code></td><td>installs the airgap command</td></tr>
             <tr><td><code>uv run airgap demo</code></td><td>the payment hijack, unguarded and airgapped, in the terminal</td></tr>
-            <tr><td><code>cd web &amp;&amp; npm ci &amp;&amp; npx vite build &amp;&amp; cd ..</code></td><td>builds the console once</td></tr>
+            <tr><td><code>(cd web &amp;&amp; npm ci &amp;&amp; npx vite build)</code></td><td>builds the console once</td></tr>
             <tr><td><code>uv run airgap serve</code></td><td>the console on 127.0.0.1:8000</td></tr>
           </tbody>
         </table>
