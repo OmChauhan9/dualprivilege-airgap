@@ -16,6 +16,7 @@ from airgap.core.fetcher import domain_of_url
 from airgap.core.policy import approve_all, deny_all
 from airgap.core.result import RunResult
 from airgap.eval.corpus import DATA_DRIVEN, PUBLISHED_LEAKS, Case, Split, cases_for
+from airgap.eval.machine import run_meta
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel
 from airgap.models.budget import BudgetExceeded
@@ -371,6 +372,8 @@ def save(
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = [asdict(t) for t in trials]
     payload: Any = rows if model_name is None else {"model": model_name, "trials": rows}
-    if incomplete and isinstance(payload, dict):
-        payload["incomplete"] = True
+    if isinstance(payload, dict):
+        if incomplete:
+            payload["incomplete"] = True
+        payload["run_meta"] = run_meta()
     path.write_text(json.dumps(payload, indent=1))

@@ -1,4 +1,4 @@
-"""Command line: `airgap demo | eval | adaptive | serve | spend`."""
+"""Command line: `airgap demo | eval | adaptive | reproduce | serve | spend`."""
 
 from __future__ import annotations
 
@@ -202,6 +202,14 @@ def run_adaptive_cmd(args: argparse.Namespace) -> None:
     print(f"\nadaptive attempts saved to {args.out} (marked adaptive; not corpus results)")
 
 
+def reproduce_cmd(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from airgap.eval import reproduce
+
+    sys.exit(reproduce.run(out=Path(args.out) if args.out else None))
+
+
 def serve(args: argparse.Namespace) -> None:
     from pathlib import Path
 
@@ -283,6 +291,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     a.add_argument("--out", default="results/adaptive.json")
     a.set_defaults(func=run_adaptive_cmd)
+    r = sub.add_parser(
+        "reproduce", help="re-check every published number offline, with no model calls"
+    )
+    r.add_argument(
+        "--out", default=None, help="machine record (default: results/repro/<date>-<sha>.json)"
+    )
+    r.set_defaults(func=reproduce_cmd)
     s = sub.add_parser("serve", help="serve the side-by-side demo console")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
