@@ -1,0 +1,175 @@
+{
+ "command": "airgap reproduce",
+ "started_utc": "2026-11-25T06:52:09+00:00",
+ "finished_utc": "2026-11-25T06:52:10+00:00",
+ "seconds": 0.42,
+ "seed": "none needed (deterministic)",
+ "machine": {
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "os_version": "26.5.2",
+  "cpu": "Apple M3 Pro",
+  "cpu_count": 11,
+  "python": "3.14.7",
+  "airgap_version": "0.1.0",
+  "uv_lock_sha256": "7385e3dea2365d36aa97c2c6c34a6eb11d68925bccde7066d6bd8c19301196f1",
+  "packages": {
+   "annotated-doc": "0.0.5",
+   "annotated-types": "0.8.0",
+   "anyio": "4.15.1",
+   "beautifulsoup4": "4.15.0",
+   "certifi": "2026.10.23",
+   "click": "8.5.0",
+   "dualprivilege-airgap": "0.1.0",
+   "fastapi": "0.162.0",
+   "h11": "0.16.0",
+   "httpcore": "1.0.9",
+   "httpcore2": "2.16.0",
+   "httpx": "0.28.1",
+   "httpx2": "2.16.0",
+   "hypothesis": "6.170.13",
+   "idna": "3.20",
+   "iniconfig": "2.3.1",
+   "jiter": "0.18.0",
+   "lxml": "6.1.3",
+   "nodeenv": "1.11.0",
+   "openai": "3.41.0",
+   "opentelemetry-api": "1.45.2",
+   "packaging": "26.3",
+   "pluggy": "1.7.0",
+   "pydantic": "2.14.2",
+   "pydantic_core": "2.50.2",
+   "pygments": "2.21.0",
+   "pyright": "1.1.414",
+   "pytest": "9.2.0",
+   "ruff": "0.17.3",
+   "sniffio": "1.3.1",
+   "sortedcontainers": "2.4.0",
+   "soupsieve": "4.0",
+   "starlette": "1.10.0",
+   "truststore": "0.10.5",
+   "typing-inspection": "0.4.4",
+   "typing_extensions": "4.16.0",
+   "uvicorn": "0.54.0"
+  },
+  "git": {
+   "commit": "3a28e06eb505c0f8312c1837ddd6f5acca348970",
+   "dirty": false
+  }
+ },
+ "checks": 297,
+ "mismatches": 0,
+ "steps": [
+  {
+   "name": "offline",
+   "checks": 3,
+   "mismatches": []
+  },
+  {
+   "name": "numbers",
+   "checks": 294,
+   "mismatches": []
+  }
+ ],
+ "not_covered": [
+  {
+   "doc": "README.md",
+   "quote": "33 were page data",
+   "reason": "The difference of two covered numbers: 34 hijacks less the 1 `identity:split_notice` run. Both are checked."
+  },
+  {
+   "doc": "README.md",
+   "quote": "Its 8 hijacks came from four cases",
+   "reason": "The case count is written as a word. The 8 hijacks and each case's runs are checked."
+  },
+  {
+   "doc": "README.md",
+   "quote": "Two of them were written together with the cap feature they test",
+   "reason": "Which cases were written with which feature is history, not a recorded field."
+  },
+  {
+   "doc": "README.md",
+   "quote": "Two of that category's seven cases are visible zero-width text",
+   "reason": "Written as words; the split of hidden_text cases by kind is not a recorded field."
+  },
+  {
+   "doc": "README.md",
+   "quote": "one hidden-text run got the agent to report a false balance",
+   "reason": "Written as a word."
+  },
+  {
+   "doc": "README.md",
+   "quote": "upper bound about 6-7%",
+   "reason": "A range written from two Wilson bounds (0/57 and 0/51). Both k/n are checked."
+  },
+  {
+   "doc": "README.md",
+   "quote": "4 were fetch refusals (3 unlisted domains and 1 HTTP 503)",
+   "reason": "The 4 is checked. The 3 and 1 split would need parsing error text, which is not a recorded field."
+  },
+  {
+   "doc": "README.md",
+   "quote": "The harness then counted the last 5 as safe stops",
+   "reason": "How an older harness scored these runs. The file does not record it."
+  },
+  {
+   "doc": "README.md",
+   "quote": "Run the demo in 60 seconds",
+   "reason": "A heading about setup time, not a measured result."
+  },
+  {
+   "doc": "README.md",
+   "quote": "Adaptive attacks bypassed 12 recent defenses",
+   "reason": "An external paper (Nasr et al., 2025)."
+  },
+  {
+   "doc": "README.md",
+   "quote": "three sessions on `86468f3`, one on earlier code",
+   "reason": "Written as words. The session files are checked."
+  },
+  {
+   "doc": "README.md",
+   "quote": "The sanitizer output is byte-identical to `86468f3` on every page the scenarios serve",
+   "reason": "Needs the old commit's code. The page counts (354 routes, 254 pages) are checked."
+  },
+  {
+   "doc": "THREAT_MODEL.md",
+   "quote": "Nasr et al. (2025) bypassed 12 recent defenses",
+   "reason": "An external paper."
+  },
+  {
+   "doc": "docs/demo-script.md",
+   "quote": "with six chips",
+   "reason": "Written as a word. The five hijacked cases and the goal-only case are checked in README.md."
+  },
+  {
+   "doc": "docs/demo-script.md",
+   "quote": "the unguarded pane finishes in about 6 s, the airgapped one in about 12 s",
+   "reason": "Depends on the console player's timing constants in web/src, not on a result file."
+  },
+  {
+   "doc": "docs/demo-script.md",
+   "quote": "About 10 s.",
+   "reason": "Depends on the console player's timing constants in web/src, not on a result file."
+  },
+  {
+   "doc": "docs/adr/0004-report-confirmation-modes-separately.md",
+   "quote": "\"0 of 40\" is shown with its upper bound",
+   "reason": "An illustrative example, not a result."
+  },
+  {
+   "doc": "docs/architecture.md",
+   "quote": "# [('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1",
+   "reason": "The output of an illustrative code example. tests/ cover the behavior."
+  },
+  {
+   "doc": "PROVENANCE.md",
+   "quote": "4 of 26 models executed the payment",
+   "reason": "External: Zscaler ThreatLabz, July 2026. PROVENANCE.md is outside the checked docs."
+  },
+  {
+   "doc": "PROVENANCE.md",
+   "quote": "2 of 26 models called the fake site legitimate",
+   "reason": "External: Zscaler ThreatLabz, July 2026. PROVENANCE.md is outside the checked docs."
+  }
+ ]
+}
