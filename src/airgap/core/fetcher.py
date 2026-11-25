@@ -114,10 +114,23 @@ _WINDOWS_1252_HIGH = str.maketrans(
 )
 _UTF8_BOM = b"\xef\xbb\xbf"
 _OTHER_BOMS = (b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff", b"+/v")
-_HTML_COMMENT = re.compile(rb"<!--.*?(?:-->|$)", re.S)
-_DECLARATION = rb"""charset[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >"']*))"""
-_ANY_DECLARATION = re.compile(_DECLARATION, re.I)
-_META_DECLARATION = re.compile(rb"<meta[\t\n\f\r /][^>]*?" + _DECLARATION, re.I)
+_ANY_DECLARATION = re.compile(
+    rb"""charset[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >"']*))""", re.I
+)
+_SPACE = b"\t\n\f\r "
+# Chrome reads the content of these as text when it looks for a <meta>; the prescan reads markup.
+_TEXT_ELEMENTS = {
+    b"iframe",
+    b"noembed",
+    b"noframes",
+    b"noscript",
+    b"plaintext",
+    b"script",
+    b"style",
+    b"textarea",
+    b"title",
+    b"xmp",
+}
 # Bytes a browser's guess could read as something other than ASCII.
 _NOT_PLAIN_ASCII = re.compile(rb"[\x00\x1b\x80-\xff]")
 _TOKEN = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"
@@ -161,6 +174,135 @@ def _labels(matches: Iterator[re.Match[bytes]]) -> list[str]:
     return [label for label in found if label.strip("\t\n\f\r ")]  # browsers skip empty labels
 
 
+def _lower(b: int) -> int:
+    return b + 0x20 if 0x41 <= b <= 0x5A else b
+
+
+def _get_attribute(data: bytes, i: int) -> tuple[bytes | None, bytes, int]:
+    """HTML Standard "get an attribute" (prescan). A None name means the tag ended at `i`."""
+    while data[i] in b"\t\n\f\r /":
+        i += 1
+    if data[i] == 0x3E:
+        return None, b"", i
+    name, value = bytearray(), bytearray()
+    while True:
+        b = data[i]
+        if b == 0x3D and name:
+            i += 1
+            break
+        if b in _SPACE:
+            while data[i] in _SPACE:
+                i += 1
+            if data[i] != 0x3D:
+                return bytes(name), b"", i
+            i += 1
+            break
+        if b in b"/>":
+            return bytes(name), b"", i
+        name.append(_lower(b))
+        i += 1
+    while data[i] in _SPACE:
+        i += 1
+    quote = data[i]
+    if quote in b"\"'":
+        while data[i := i + 1] != quote:
+            value.append(_lower(data[i]))
+        return bytes(name), bytes(value), i + 1
+    if quote == 0x3E:
+        return bytes(name), b"", i
+    while data[i] not in _SPACE and data[i] != 0x3E:
+        value.append(_lower(data[i]))
+        i += 1
+    return bytes(name), bytes(value), i
+
+
+def _content_charset(content: bytes) -> str | None:
+    """HTML Standard "extract a character encoding from a meta element"; returns the label."""
+    i = 0
+    while (i := content.find(b"charset", i)) >= 0:
+        i += 7
+        while i < len(content) and content[i] in _SPACE:
+            i += 1
+        if i < len(content) and content[i] == 0x3D:
+            i += 1
+            while i < len(content) and content[i] in _SPACE:
+                i += 1
+            if i == len(content):
+                return None
+            if content[i] in b"\"'":
+                end = content.find(content[i : i + 1], i + 1)
+                return None if end < 0 else content[i + 1 : end].decode("latin-1")
+            end = i
+            while end < len(content) and content[end] not in b"\t\n\f\r ;":
+                end += 1
+            return content[i:end].decode("latin-1")
+    return None
+
+
+def _meta_charset(data: bytes, i: int) -> tuple[str | None, int]:
+    """The <meta> branch of the prescan, from just after "<meta ": the label it yields, if any."""
+    seen: set[bytes] = set()
+    got_pragma, need_pragma, charset = False, None, None
+    while True:
+        name, value, i = _get_attribute(data, i)
+        if name is None:
+            break
+        if name in seen:
+            continue
+        seen.add(name)
+        if name == b"http-equiv":
+            got_pragma = got_pragma or value == b"content-type"
+        elif name == b"content":
+            label = _content_charset(value)
+            if label and charset is None:
+                charset, need_pragma = label, True
+        elif name == b"charset":
+            charset, need_pragma = value.decode("latin-1"), False
+    if need_pragma is None or (need_pragma and not got_pragma):
+        return None, i
+    return charset, i
+
+
+def _prescan(data: bytes) -> str | None:
+    """HTML Standard "prescan a byte stream to determine its encoding" over `data`.
+
+    Returns the encoding of the first <meta> a browser would use, or None when there is none or
+    Chrome may not see it. A label outside the supported table is refused: a browser either uses
+    that charset or skips to the next <meta>, and only the full WHATWG table tells which.
+    """
+    if data.startswith((b"<\x00?\x00x\x00", b"\x00<\x00?\x00x")):
+        raise FetchError("unsupported charset: the page starts with a UTF-16 XML declaration")
+    after_text_element = False
+    i = 0
+    try:
+        while i < len(data):
+            if data.startswith(b"<!--", i):
+                i = data.index(b"-->", i + 2) + 2  # the dashes of "<!--" may close it: "<!-->"
+            elif data[i : i + 5].lower() == b"<meta" and data[i + 5] in b"\t\n\f\r /":
+                label, i = _meta_charset(data, i + 5)
+                if label is not None and label.strip("\t\n\f\r "):
+                    encoding = _encoding(label, _WHATWG_META_LABELS)
+                    return None if after_text_element else encoding
+            elif data[i] == 0x3C and (
+                data[i + 1 : i + 2].isalpha()
+                or (data[i + 1 : i + 2] == b"/" and data[i + 2 : i + 3].isalpha())
+            ):
+                end = i + 1
+                while data[end] not in _SPACE and data[end] != 0x3E:
+                    end += 1
+                after_text_element |= data[i + 1 : end].lower() in _TEXT_ELEMENTS
+                i = end
+                while (attribute := _get_attribute(data, i))[0] is not None:
+                    i = attribute[2]
+                i = attribute[2]
+            elif data[i] == 0x3C and data[i + 1 : i + 2] in (b"!", b"/", b"?"):
+                i = data.index(b">", i + 1)
+            i += 1
+    except (IndexError, ValueError):  # the 1024 bytes end inside a tag or comment
+        return None
+    return None
+
+
 def _decodable_charset(content_type: str | None, body: bytes) -> str:
     if body.startswith(_UTF8_BOM):
         return "utf-8-sig"
@@ -169,15 +311,15 @@ def _decodable_charset(content_type: str | None, body: bytes) -> str:
     header = _header_label(content_type)
     if header is not None:
         return _encoding(header)
-    # A browser may act on any <meta> it meets while parsing, so every declaration must agree,
-    # and it surely sees only one in the first 1024 bytes outside a comment.
+    # A browser may act on any <meta> it meets while parsing, so every declaration must agree
+    # with the one the prescan of the first 1024 bytes finds.
     found = _labels(_ANY_DECLARATION.finditer(body))
     declared = {_encoding(label, _WHATWG_META_LABELS) for label in found}
-    if len(declared) > 1:
+    early = _prescan(body[:1024])
+    if len(declared | {early} - {None}) > 1:
         raise FetchError("unsupported charset: the page declares conflicting ones")
-    early = _labels(_META_DECLARATION.finditer(_HTML_COMMENT.sub(b"", body[:1024])))
-    if declared and early:
-        return declared.pop()
+    if early is not None:
+        return early
     if _NOT_PLAIN_ASCII.search(body):
         raise FetchError("unsupported charset: the page declares none a browser is sure to use")
     return "utf-8"
