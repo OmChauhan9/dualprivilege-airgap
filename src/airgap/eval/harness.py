@@ -1,4 +1,5 @@
-"""Evaluation harness. Success is read from the ledger, never from what a model says."""
+"""Evaluation harness. Hijacks are read from the ledger, unlisted requests from the mock web's
+request log, and a false balance from the number in the reply."""
 
 from __future__ import annotations
 

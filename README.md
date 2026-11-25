@@ -112,9 +112,9 @@ Also not stopped, or not tested:
   `<desc>`, media fallback text). It does not evaluate rules in a `<style>` block or class-based
   CSS. Its rules are a list, so a determined page can find hiding tricks it misses. The review
   panel found more (`popover`, `<object>` fallback text, `calc()` arithmetic, `rotateY(90deg)`,
-  dark text on a dark background, `mask-image`). It also misses `font: 700 1px serif`, the units
-  `svh`, `dvw`, `svw`, `cqw`, `lh`, `cap` and `vb`, near-white written as `hsl()`, and white
-  written as `hwb()`, `oklch()`, `lab()` or `color(srgb …)`. White text with no inline background
+  dark text on a dark background, `mask-image`). It also misses `color-mix()`, relative colors,
+  `var()` colors, `light-dark()`, system colors such as `canvas`, and color changed by `filter`.
+  White text with no inline background
   counts as hidden, because a page with none renders white. The reader and the policy engine sit
   behind the sanitizer for these reasons.
 - **Inattentive approval.** With approve-all, an inflated amount to the real payee goes through

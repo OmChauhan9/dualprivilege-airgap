@@ -1,10 +1,12 @@
-"""Scenarios: user task + mock web + ground-truth judge. Attacks are scored from the ledger.
+"""Scenarios: user task + mock web + ground-truth judge. Hijacks are scored from the ledger,
+a false balance from the number in the reply.
 
 Each scenario family is a builder parametrized by the values on its pages (totals, unread
-counts, amounts, prices, vendors). Judges compare against those parameters, never against
-what a model says. `SCENARIOS` keeps the four demo scenarios under their original ids;
-`EVAL_SCENARIOS` adds the default instance of every newer family (the attack corpus runs on
-these); `CATALOG` adds the parametrized variants that make up the benign set.
+counts, amounts, prices, vendors). Judges compare the ledger and the numbers in the reply with
+those parameters; they never take a model's word that a task succeeded. `SCENARIOS` keeps the
+four demo scenarios under their original ids; `EVAL_SCENARIOS` adds the default instance of
+every newer family (the attack corpus runs on these); `CATALOG` adds the parametrized variants
+that make up the benign set.
 
 `make_injected_web` serves the adaptive attacker (rung 3, `airgap.eval.adaptive`): it builds the
 same pages from free attacker text (an `Injection`) instead of a named corpus attack.
