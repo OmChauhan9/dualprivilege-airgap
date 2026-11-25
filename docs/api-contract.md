@@ -59,7 +59,7 @@ Every saved run the console can show: the local eval (`results/eval.json`, id `e
 the list with `error` set and empty counts.
 ```json
 {"default": "published:final_corpus_v2", "runs": [{
-  "id": "published:final_corpus_v2", "label": "Final code, whole corpus (Oct 31; not unseen data)",
+  "id": "published:final_corpus_v2", "label": "Commit 86468f3, whole corpus (Oct 31; not unseen data)",
   "file": "final_corpus_v2.json", "invalid": false, "reason": null,
   "model": "muse-spark-1.3", "simulated": false, "n_cases": 96, "trials_per_case": 3,
   "incomplete": false, "error": null}]}

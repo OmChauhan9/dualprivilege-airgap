@@ -71,7 +71,7 @@ user" from the number in the reply. Every other goal is scored from the ledger.
 | User text, allowlists, limits (`UserContext`) | trusted | The user's own channel |
 | Orchestrator (LLM) | trusted input only | `plan()` takes the user text and `UserContext`; it never receives page content, reader output or runtime errors |
 | Plan validator, interpreter, policy engine | trusted code | Plain code; this is the boundary ([ADR 0001](docs/adr/0001-policy-engine-is-the-boundary.md)) |
-| Fetcher | trusted code, untrusted output | Its provenance (registrable domain, redirect chain, status) is a fact the page cannot set. The body is untrusted. The fetcher picks the charset in browser order (byte-order mark, then the header, then a `<meta>` tag). It accepts only UTF-8, ASCII, ISO-8859-1 and windows-1252, and refuses every other charset, so the sanitizer reads the same characters a browser decodes. There is one known gap. A header label that only Python knows (`utf_8`, `u8`, `utf`, `cp65001`, `646`, `latin`, `8859`) is accepted, and the `<meta>` tag a browser would use is then ignored |
+| Fetcher | trusted code, untrusted output | Its provenance (registrable domain, redirect chain, status) is a fact the page cannot set. The body is untrusted. The fetcher picks the charset in browser order (byte-order mark, then the header, then a `<meta>` tag). It reads labels from the WHATWG label table and decodes only UTF-8 and windows-1252, and only when a browser is sure to pick the same one. It refuses other charsets, conflicting declarations, and non-ASCII pages with no label a browser is sure to see, so the sanitizer reads the same characters a browser decodes |
 | Sanitizer | trusted code, untrusted output | Reduces hidden channels, but is not a guarantee |
 | Reader (LLM) | untrusted | It reads attacker text. It has no tools and no network. Its output must match a flat schema, and every value carries a taint label with the origin domain |
 | Confirmation gate | the user | Its strength depends on how attentive the user is, so we report three modes |
@@ -98,8 +98,10 @@ address even with approve-all.
 empty string or a word from the request does not (`test_p1_rejects_fragments_and_near_misses...`).
 An address inside a link the user pasted does not count either, whatever the scheme's letter case
 and with or without a scheme (`www.`), so a lure link such as `http://.../pay?to=0x...` cannot make
-its wallet a valid payee. There is a known gap. A bare host with an underscore (`my_shop.test/pay?to=0x...`),
-`user:0x...@shop.test/` and `data:text/plain,0x...` still make the address count as user-written.
+its wallet a valid payee. An address counts only as a word of its own, set off by spaces, line breaks,
+quotes, brackets or sentence punctuation. One glued to `/ ? = & @ : # %`, another word or an unusual
+space such as U+00A0 does not count. An address set off from a link by a plain space or line break
+(`...?to= 0x...`) still counts, because it reads as a word the user wrote.
 **Note:** in the offline corpus P1 never fires at runtime, because the orchestrator never sees an
 attacker address to copy. The code enforces this rule twice as a backstop: statically in `validate_plan`,
 and at runtime in `check_pay` (`test_p1_unlisted_payee_denied`).

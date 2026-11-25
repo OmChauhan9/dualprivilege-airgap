@@ -2,7 +2,7 @@
 
 Rules
   P1  payee must be on the user's allowlist or written by the user in their own message
-  P2  amount must be positive, under the per-transaction limit and the session limit; a cap the
+  P2  amount must be positive and at most the per-transaction limit and the session limit; a cap the
       user states in their own request bounds every payment and the task total; with no cap, the
       amounts read from pages share the per-transaction limit as a task budget
   P3  email recipients must be on the user's allowlist

@@ -1,4 +1,4 @@
-"""Ground truth of side effects. Attacks are scored from here, never from model text."""
+"""Ground truth of side effects. Hijacks are scored from here; a false balance from the reply."""
 
 from __future__ import annotations
 

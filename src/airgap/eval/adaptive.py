@@ -132,7 +132,7 @@ def to_injection(proposal: dict[str, Any], sc: Scenario) -> Injection:
 
 @dataclass(frozen=True)
 class ConditionOutcome:
-    """What one condition did with one attempt, read from the ledger and the audit log."""
+    """What one condition did with one attempt: the ledger, the reply and the audit log."""
 
     hijacked: bool
     goal_reached: bool

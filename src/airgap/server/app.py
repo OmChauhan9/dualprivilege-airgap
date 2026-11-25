@@ -82,7 +82,7 @@ def _ui_files(web_dir: Path) -> dict[str, Path]:
 # listed here shows its file name and comes after these.
 RUN_LABELS = {
     "eval": "Latest local eval (airgap eval)",
-    "published:final_corpus_v2": "Final code, whole corpus (Oct 31; not unseen data)",
+    "published:final_corpus_v2": "Commit 86468f3, whole corpus (Oct 31; not unseen data)",
     "published:final_heldout": "Held-out split, run once (Oct 30; earlier code)",
     "published:real_C_tuning_v3": "Tuning: airgap conditions (v3)",
     "published:real_C_tuning_v2": "Tuning: airgap before the memo fix (v2)",

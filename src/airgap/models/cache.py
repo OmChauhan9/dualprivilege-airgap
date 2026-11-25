@@ -1,4 +1,4 @@
-"""Record/replay wrapper so demos and evals are reproducible and cheap."""
+"""Record/replay wrapper for model calls. The CLI, the eval and the server do not use it yet."""
 
 from __future__ import annotations
 
