@@ -1,5 +1,7 @@
 """Inline-CSS hiding is found after parsing, so variants a browser also hides are stripped."""
 
+import time
+
 import pytest
 
 from airgap.core.airgap import AirgapAgent
@@ -155,3 +157,209 @@ def test_ordinary_markup_is_kept(html):
 def test_white_body_text_attribute_hides_the_page_text():
     out = sanitize('<body text="#ffffff"><p>SECRET PAYLOAD</p></body>')
     assert "SECRET PAYLOAD" not in out.text
+
+
+# CSS Values 4 length units, each of which a browser accepts for a size or an offset.
+LENGTH_UNITS = [
+    *("em", "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh", "rlh"),
+    *(
+        f"{prefix}{axis}"
+        for prefix in ("v", "sv", "lv", "dv")
+        for axis in ("w", "h", "i", "b", "min", "max")
+    ),
+    *("cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax"),
+    *("px", "cm", "mm", "q", "in", "pt", "pc"),
+]
+
+
+@pytest.mark.parametrize("unit", LENGTH_UNITS)
+def test_tiny_font_in_any_length_unit_is_stripped(unit):
+    out = sanitize(f'<p>Visible 42</p><span style="font-size:0.01{unit}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize("unit", LENGTH_UNITS)
+def test_far_offset_in_any_length_unit_is_stripped(unit):
+    out = sanitize(
+        f'<p>Visible 42</p><span style="position:absolute;left:-99999{unit}">SECRET PAYLOAD</span>'
+    )
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+CSS4_HIDDEN = [
+    '<span style="font:700 1px serif">{}</span>',
+    '<span style="font:normal 400 0px serif">{}</span>',
+    '<span style="font:100 0.1px/1 serif">{}</span>',
+    '<span style="font:italic small-caps bold condensed 1px serif">{}</span>',
+    '<span style="font:oblique 10deg 900 2px/20px serif">{}</span>',
+    '<span style="font:1000 0.1svh serif">{}</span>',
+    '<span style="color:hsl(0, 0%, 98%)">{}</span>',
+    '<span style="color:hsl(0.5turn 0 98)">{}</span>',
+    '<span style="color:hsla(240 20% 99% / 1)">{}</span>',
+    '<span style="color:hwb(0 100% 0%)">{}</span>',
+    '<span style="color:hwb(120 96% 2%)">{}</span>',
+    '<span style="color:oklch(1 0 0)">{}</span>',
+    '<span style="color:oklch(98% 0.01 90)">{}</span>',
+    '<span style="color:oklab(0.99 0 0)">{}</span>',
+    '<span style="color:lab(100 0 0)">{}</span>',
+    '<span style="color:lab(98% 0 0)">{}</span>',
+    '<span style="color:lch(99 1 180)">{}</span>',
+    '<span style="color:color(srgb 1 1 1)">{}</span>',
+    '<span style="color:color(srgb 97% 98% 99%)">{}</span>',
+    '<span style="color:color(srgb-linear 1 1 1)">{}</span>',
+    '<span style="color:color(display-p3 1 1 1)">{}</span>',
+    '<span style="color:color(rec2020 1 1 1)">{}</span>',
+    '<span style="color:color(a98-rgb 1 1 1)">{}</span>',
+    '<span style="color:color(prophoto-rgb 1 1 1)">{}</span>',
+    '<span style="color:color(xyz 0.9505 1 1.089)">{}</span>',
+    '<span style="color:color(xyz-d50 0.9642 1 0.8251)">{}</span>',
+    '<div style="background:oklch(0.99 0 0)"><b style="color:#fff">{}</b></div>',
+]
+
+
+@pytest.mark.parametrize("wrapper", CSS4_HIDDEN)
+def test_css4_font_and_color_hiding_variants_are_stripped(wrapper):
+    out = sanitize(f"<body><p>Visible 42</p>{wrapper.format('SECRET PAYLOAD')}</body>")
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+    assert out.removed
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<p style="font:700 14px/1.4 serif">KEEP</p>',
+        '<p style="font:italic bold 16px Arial, sans-serif">KEEP</p>',
+        '<p style="font:oblique 10deg 300 1.2rem/1.5 serif">KEEP</p>',
+        '<p style="font:caption">KEEP</p>',
+        '<p style="font-size:2svh">KEEP</p>',
+        '<p style="font-size:1.2lh">KEEP</p>',
+        '<p style="margin-left:-0.5cqw">KEEP</p>',
+        '<p style="color:hsl(0 0% 20%)">KEEP</p>',
+        '<p style="color:hsl(60 100% 50%)">KEEP</p>',
+        '<p style="color:hwb(0 50% 0%)">KEEP</p>',
+        '<p style="color:oklch(0.7 0.2 30)">KEEP</p>',
+        '<p style="color:lab(50 40 -20)">KEEP</p>',
+        '<p style="color:color(display-p3 1 0.9 0.9)">KEEP</p>',
+        '<p style="color:oklch(1 0 0);background:oklch(0.2 0 0)">KEEP</p>',
+        '<div style="background:lab(10 0 0)"><b style="color:#fff">KEEP</b></div>',
+        '<div style="background:color(srgb 0 0 0)"><b style="color:white">KEEP</b></div>',
+    ],
+)
+def test_ordinary_css4_values_are_kept(html):
+    assert "KEEP" in sanitize(html).text
+
+
+# A CSS comment separates the tokens on either side, so it must not join them into one value.
+@pytest.mark.parametrize(
+    "style",
+    [
+        "font:700/**/1px serif",
+        "font:bold/**/700/* x */0.5px/**/serif",
+        "position:absolute;margin:0/**/0/**/0/**/-99999px",
+        "position:absolute;inset:-99999px/**/auto",
+        "transform:translate(-99999px,/**/0)",
+    ],
+)
+def test_comment_between_tokens_does_not_hide_a_trick(style):
+    out = sanitize(f'<p>Visible 42</p><span style="{style}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+def test_comment_in_a_presentation_attribute_does_not_hide_a_trick():
+    out = sanitize('<p>Visible 42</p><svg><text display="/**/none/**/">SECRET PAYLOAD</text></svg>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+def test_comment_inside_a_number_does_not_join_it_into_a_hiding_value():
+    assert "KEEP" in sanitize('<p style="position:absolute;left:-1/**/9999px">KEEP</p>').text
+
+
+# A browser clips a channel far outside the gamut, so these render white. Page input never raises.
+@pytest.mark.parametrize(
+    "style",
+    [
+        "color:color(srgb 1e308 1 1)",
+        "color:lab(1e200 0 0)",
+        "color:oklab(1e200 0 0)",
+        "color:color(a98-rgb 1e300 1 1)",
+        "color:color(srgb 1e999 1 1)",
+    ],
+)
+def test_huge_color_channels_are_clipped_like_a_browser(style):
+    out = sanitize(f'<p>Visible 42</p><span style="{style}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize(
+    "style",
+    [
+        "color:lch(50 1e300 1e300)",
+        "color:oklch(1e308 1e308 1e308deg)",
+        "color:hsl(1e999deg 1e308% 1e308%)",
+        "color:hwb(1e308 1e308% 1e308%)",
+        "color:color(xyz 1e308 -1e308 1e308)",
+        "color:color(prophoto-rgb 1e308 1e308 1e308 / 1e308)",
+        "color:color(rec2020 -1e308 1e308 1)",
+        "color:rgb(1e999 -1e999 1e308)",
+        "color:#fff;background:lab(1e200 -1e200 1e200)",
+    ],
+)
+def test_huge_color_channels_never_raise(style):
+    sanitize(f'<p style="{style}">x</p>')
+
+
+def test_font_shorthand_with_many_tokens_is_linear():
+    style = "font:" + " 1 bold" * 30_000 + " serif"
+    start = time.perf_counter()
+    sanitize(f'<p style="{style}">x</p>')
+    assert time.perf_counter() - start < 1.0
+
+
+# A nearly transparent background shows the page below it, so it is not a dark background.
+@pytest.mark.parametrize(
+    "background",
+    [
+        "rgba(0,0,0,0.001)",
+        "lab(0 0 0 / 0.001)",
+        "oklch(0 0 0 / 0.001)",
+        "color(srgb 0 0 0 / 0.001)",
+        "hsl(0 0% 0% / 0.001)",
+        "rgb(0 0 0 / 0.04)",
+    ],
+)
+def test_white_text_on_a_nearly_transparent_background_is_stripped(background):
+    out = sanitize(
+        f'<p>Visible 42</p><span style="color:white;background:{background}">SECRET PAYLOAD</span>'
+    )
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+# Only rgb(), rgba(), hsl() and hsla() accept commas. A browser drops any other color with commas.
+@pytest.mark.parametrize(
+    "background",
+    ["lab(0,0,0)", "oklch(0,0,0)", "hwb(0,0%,100%)", "color(srgb,0,0,0)", "lch(0, 0, 0)"],
+)
+def test_comma_background_in_a_modern_color_function_counts_as_absent(background):
+    out = sanitize(
+        f'<p>Visible 42</p><span style="color:white;background:{background}">SECRET PAYLOAD</span>'
+    )
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize("color", ["lab(100,0,0)", "oklch(1,0,0)", "color(srgb,1,1,1)"])
+def test_comma_color_in_a_modern_color_function_is_dropped_and_text_kept(color):
+    assert "KEEP" in sanitize(f'<p style="color:{color}">KEEP</p>').text
+
+
+# A quoted family glued to the size is still a separate token, so the size is read.
+@pytest.mark.parametrize("style", ["font:700 1px'serif'", "font:bold 0.5px&quot;a b&quot;"])
+def test_font_size_glued_to_a_quoted_family_is_read(style):
+    out = sanitize(f'<p>Visible 42</p><span style="{style}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize(
+    "style", ["color:white;background:rgba(0,0,0,0.5)", "color:white;background:lab(0 0 0 / 0.5)"]
+)
+def test_white_text_on_a_half_transparent_dark_background_is_kept(style):
+    assert "KEEP" in sanitize(f'<p style="{style}">KEEP</p>').text
