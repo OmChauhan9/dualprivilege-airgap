@@ -1520,7 +1520,7 @@
   },
   {
    "doc": "README.md",
-   "quote": "Adaptive attacks bypassed 12 recent defenses",
+   "quote": "Adaptive attacks bypassed 12 recent jailbreak and prompt-injection defenses",
    "reason": "An external paper (Nasr et al., 2025)."
   },
   {
@@ -1562,6 +1562,16 @@
    "doc": "docs/architecture.md",
    "quote": "# [('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1",
    "reason": "The output of an illustrative code example. tests/ cover the behavior."
+  },
+  {
+   "doc": "README.md",
+   "quote": "A full re-measure costs about $21.",
+   "reason": "An estimate of future spend, not a recorded result."
+  },
+  {
+   "doc": "README.md",
+   "quote": "the runs used temperature 0.7 and no seed",
+   "reason": "A model setting in src/airgap/models/meta.py, not a result."
   },
   {
    "doc": "PROVENANCE.md",

@@ -242,8 +242,9 @@ These points apply to every table below.
 All runs use Meta's Model API, Standard mode (never a `-contributor` model), the same mock web and
 the same judges as above. Every raw trial and log, with the commit where the log records one
 (tuning-run commits are inferred), is in [`results/published/`](results/published/README.md).
-`uv run python scripts/frozen_numbers.py` recomputes the final-code table and the Oct 31 adaptive
-numbers from those files.
+`uv run airgap reproduce` re-derives this section's numbers from those files and checks each
+against the docs. The few it cannot derive are listed with the reason (see
+[Reproduce the numbers](#reproduce-the-numbers)).
 
 Total real spend for the whole project was about $23.82 in the published logs. The video demo runs
 in `results/published/video_demo/` are not in them. Issue
@@ -451,6 +452,36 @@ The offline eval runs all 96 cases, 1 trial each. Its output prints intervals as
 - The offline eval skips the prompt-defense baseline (condition B), because `FakeLLM` does not
   simulate prompt defenses.
 
+### Reproduce the numbers
+
+```bash
+uv run airgap reproduce   # offline, no key, no model call; exit 0 when every number matches
+```
+
+It checks three things.
+
+- It re-runs the offline eval, the offline adaptive run and the console replay. It compares each
+  with its saved file (`offline_fakellm.json`, `offline_adaptive.json` and
+  `web/public/replays/fake.json`) on every field except latency.
+- It re-derives the recorded real-model numbers from `results/published/`. Those are the
+  whole-corpus run, the held-out run, the tuning table, both adaptive runs and the spend in the logs.
+- It checks the numbers quoted in this README, `THREAT_MODEL.md` and `docs/` against
+  [`expected_numbers.json`](results/published/expected_numbers.json). The derived value must equal
+  the quoted one, and the quote must still be in its doc. The numbers it cannot derive are listed
+  there under `not_covered`, each with its reason.
+
+It exits 1 on any mismatch and prints the number's id, the expected and derived values and the doc.
+It exits 2 when a file is missing or unreadable. Each run writes a machine record to
+`results/repro/`, with the OS, CPU, Python, package versions, `uv.lock` hash and git commit. The
+reference record, [`reproduce_reference.json`](results/published/reproduce_reference.json), comes
+from an Apple M3 Pro on macOS 26.5.2 with Python 3.14.7. CI runs the command on every pull request
+and every push to main, and keeps the record.
+
+It cannot re-measure the real model. A paid re-run would not match these files exactly, because
+the runs used temperature 0.7 and no seed. A full re-measure costs about $21. New `airgap eval` and
+`airgap adaptive` result files carry a `run_meta` block with the same machine record, so a future
+paid run records what it ran on.
+
 ## Install, run, test
 
 ```bash
@@ -465,7 +496,8 @@ Offline, the adaptive command uses a scripted attacker (`FakeAttacker`). It repo
 attempts got through A, 2/10 got through C_airgap and 0/10 got through strict. A figure-lie attempt
 has an empty payload. Its `amount` carries the lie.
 
-CI runs these checks, plus `uv sync --locked`, the web type check and build, and a secret scan.
+CI runs these checks, plus `uv sync --locked`, `uv run airgap reproduce`, the web type check and
+build, and a secret scan.
 `pyright` needs Node, and downloads it if none is installed.
 
 ```bash
