@@ -119,10 +119,12 @@ _CAP_RE = re.compile(
 # a pasted link that carries a wallet the user never meant to name. A rule on the word itself, not
 # a link pattern, so no spelling of a link (`my_shop.test/`, `user:0x...@host`, `data:`) needs to be
 # listed.
+# The address form P1 recognises. `Airgap(payees=...)` must use it too.
+ADDRESS_RE = re.compile(r"0x[0-9a-fA-F]{6,}")
 _WORD_SEP_RE = re.compile(r"[ \t\r\n]+")
 _ADDRESS_WORD_RE = re.compile(
     r"(?:[(\[{<\"'`*\u201c\u2018\u00ab\u300c\u300e\uff08\u2013\u2014]|[^\W_]+[\u2013\u2014])*"
-    r"(0x[0-9a-fA-F]{6,})"
+    "(" + ADDRESS_RE.pattern + ")"
     r"(?:[)\]}>\"'`*\u201d\u2019\u00bb\u300d\u300f\uff09.,;:!?\u2013\u2014\u2026"
     r"\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f]|[\u2013\u2014][^\W_]+)*"
 )

@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import inspect
 import math
+import re
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
@@ -20,10 +21,17 @@ import httpx
 
 from airgap.core.actions import Effects, Kind, PayFn, SendEmailFn
 from airgap.core.audit import AuditLog, AuditSinkFailed, Event
-from airgap.core.fetcher import Fetcher
+from airgap.core.fetcher import Fetcher, is_hostname
 from airgap.core.interpreter import Interpreter
 from airgap.core.orchestrator import Orchestrator, PlanRejected
-from airgap.core.policy import Confirm, PermissivePolicy, PolicyEngine, UserContext, deny_all
+from airgap.core.policy import (
+    ADDRESS_RE,
+    Confirm,
+    PermissivePolicy,
+    PolicyEngine,
+    UserContext,
+    deny_all,
+)
 from airgap.core.reader import Reader
 from airgap.core.result import RunResult
 from airgap.core.transport import PublicTransport
@@ -105,22 +113,21 @@ class Airgap:
                 "private_hosts applies only to the guard's own transport; with transport= "
                 "your transport decides where it connects"
             )
-        problems += [
-            f"{name} must be a positive finite number"
-            for name, v in (("per_payment_usd", per_payment_usd), ("per_run_usd", per_run_usd))
-            if not (isinstance(v, int | float) and math.isfinite(v) and v > 0)
-        ]
+        payees = dict(payees or {})
         recipients = frozenset(email_recipients)
-        problems += [f"email recipient {r!r} has no @" for r in sorted(recipients) if "@" not in r]
+        domains = frozenset(domains)
+        private_hosts = frozenset(private_hosts)
+        problems += _vet_grant(payees, recipients, domains, private_hosts)
+        problems += _vet_limits(per_payment_usd, per_run_usd)
         if problems:
             raise ValueError("Airgap cannot use this configuration:\n- " + "\n- ".join(problems))
         self._planner = planner
         self._reader = reader or planner
         self._pay = pay
         self._send_email = send_email
-        self._payees = dict(payees or {})
+        self._payees = payees
         self._recipients = recipients
-        self._domains = frozenset(domains)
+        self._domains = domains
         self._per_payment = float(per_payment_usd)
         self._per_run = float(per_run_usd)
         self._confirm = confirm
@@ -178,7 +185,7 @@ class Airgap:
 
 
 def _check_shape(name: str, fn: Callable[..., object] | None, shape: str) -> None:
-    """A function the guard calls must take exactly one positional argument."""
+    """A function the guard calls must be callable with one positional argument."""
     if fn is None:
         return
     try:
@@ -186,17 +193,52 @@ def _check_shape(name: str, fn: Callable[..., object] | None, shape: str) -> Non
     except (TypeError, ValueError):  # a builtin with no signature: trust it
         return
     try:
-        sig.bind(None)
-        takes_one = True
+        sig.bind(object())
     except TypeError:
-        takes_one = False
-    try:
-        sig.bind(None, None)
-        takes_two = True
-    except TypeError:
-        takes_two = False
-    if not takes_one or takes_two:
-        raise TypeError(f"{name} must take exactly one positional argument: {shape}, got {sig}")
+        raise TypeError(f"{name} must be callable with one argument: {shape}, got {sig}") from None
+
+
+_RECIPIENT_RE = re.compile(r"[^@\s]+@[^@\s]+")
+
+
+def _vet_grant(
+    payees: dict[str, str],
+    recipients: frozenset[str],
+    domains: frozenset[str],
+    private_hosts: frozenset[str],
+) -> list[str]:
+    """Each problem names its argument. Addresses use the form P1 recognises in a request."""
+    problems = [
+        f"payees: {alias!r} -> {addr!r} needs a non-empty alias and a 0x address"
+        for alias, addr in payees.items()
+        if not (isinstance(alias, str) and alias.strip())
+        or not (isinstance(addr, str) and ADDRESS_RE.fullmatch(addr))
+    ]
+    problems += [
+        f"email_recipients: {r!r} is not an email address"
+        for r in sorted(recipients, key=repr)
+        if not (isinstance(r, str) and _RECIPIENT_RE.fullmatch(r))
+    ]
+    for name, hosts in (("domains", domains), ("private_hosts", private_hosts)):
+        problems += [
+            f"{name}: {h!r} is not a host name"
+            for h in sorted(hosts, key=repr)
+            if not (isinstance(h, str) and h and is_hostname(h))
+        ]
+    return problems
+
+
+def _vet_limits(per_payment_usd: object, per_run_usd: object) -> list[str]:
+    problems = [
+        f"{name} must be a finite number greater than 0, got {v!r}"
+        for name, v in (("per_payment_usd", per_payment_usd), ("per_run_usd", per_run_usd))
+        if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(v) or v <= 0
+    ]
+    if not problems and float(per_payment_usd) > float(per_run_usd):  # type: ignore[arg-type]
+        problems.append(
+            f"per_payment_usd ({per_payment_usd}) must not exceed per_run_usd ({per_run_usd})"
+        )
+    return problems
 
 
 def run_ablated(
