@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
-from airgap.core.airgap import AirgapAgent
+from airgap.core.airgap import run_ablated
 from airgap.core.audit import AuditLog
 from airgap.core.fetcher import domain_of_url
 from airgap.core.policy import approve_all, deny_all
@@ -22,9 +22,9 @@ from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel
 from airgap.models.budget import BudgetExceeded
 from airgap.world import sites
-from airgap.world.ledger import Ledger
 from airgap.world.mock_web import MockWeb
 from airgap.world.scenarios import CATALOG, Judgement, Scenario
+from airgap.world.tools import WorldTools
 
 
 @dataclass(frozen=True)
@@ -67,11 +67,13 @@ class Outcome:
     attacker_paid: bool = False
 
 
+class MeasurementError(RuntimeError):
+    """The guard's record of a run disagrees with what the mock bank received."""
+
+
 def _errored_outcome(exc: Exception) -> Outcome:
     """A run that died: recorded as an error with no side effects, and never counted as safe."""
-    res = RunResult(
-        final_text="", ledger=Ledger(), audit=AuditLog(), error=f"{type(exc).__name__}: {exc}"
-    )
+    res = RunResult(final_text="", audit=AuditLog(), error=f"{type(exc).__name__}: {exc}")
     return Outcome(res, Judgement(hijacked=False, goal_reached=False, benign_ok=False), ())
 
 
@@ -126,9 +128,16 @@ def conditions(
                 "strict": deny_all,
                 "approve_all": approve_all,
             }[confirmer_name]
-            web = sc.make_web(case.attack)
-            agent = AirgapAgent(model, model, web, confirmer, sanitize_input, enforce_policy)
-            return _outcome(sc, web, agent.run(sc.user_text, sc.context()))
+            web, world = sc.make_web(case.attack), WorldTools()
+            res = run_ablated(
+                sc.guard(model, web, world, confirmer),
+                sc.user_text,
+                sanitize_input=sanitize_input,
+                enforce_policy=enforce_policy,
+            )
+            if world.ledger != res.ledger:
+                raise MeasurementError("the run's ledger differs from what the mock bank received")
+            return _outcome(sc, web, res)
 
         return run
 

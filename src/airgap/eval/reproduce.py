@@ -19,7 +19,6 @@ from math import comb
 from pathlib import Path
 from typing import Any, cast
 
-from airgap.core.airgap import AirgapAgent
 from airgap.eval import adaptive
 from airgap.eval.corpus import DATA_DRIVEN
 from airgap.eval.harness import run_suite
@@ -28,6 +27,7 @@ from airgap.eval.metrics import Rate
 from airgap.models.fake import FakeLLM
 from airgap.server.replay import record_all
 from airgap.world.scenarios import CATALOG, SCENARIOS
+from airgap.world.tools import WorldTools
 
 PUBLISHED = Path("results") / "published"
 REPLAY = Path("web") / "public" / "replays" / "fake.json"
@@ -346,8 +346,7 @@ def example_numbers() -> Numbers:
     """The code example in docs/architecture.md, run as written."""
     sc = SCENARIOS["identity"]
     model = FakeLLM()
-    agent = AirgapAgent(model, model, sc.make_web("visible_text"), sc.plausible_confirmer())
-    res = agent.run(sc.user_text, sc.context())
+    res = sc.guard(model, sc.make_web("visible_text"), WorldTools()).run(sc.user_text)
     payments = [(p.payee, p.amount_usd) for p in res.ledger.payments]
     return {"example/architecture": f"{payments} {res.confirmations}"}
 

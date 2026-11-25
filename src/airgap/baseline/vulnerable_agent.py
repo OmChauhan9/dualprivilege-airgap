@@ -6,8 +6,10 @@ import json
 import math
 import re
 import time
+import uuid
 from typing import Any
 
+from airgap.core.actions import Effects, Email, Payment
 from airgap.core.audit import AuditLog
 from airgap.core.fetcher import Fetcher, FetchError
 from airgap.core.policy import UserContext
@@ -15,7 +17,6 @@ from airgap.core.result import RunResult
 from airgap.models.base import ChatModel
 from airgap.models.budget import BudgetExceeded
 from airgap.models.jsonutil import extract_json_object
-from airgap.world.ledger import Ledger
 from airgap.world.mock_web import MockWeb
 from airgap.world.tools import WorldTools
 
@@ -50,6 +51,11 @@ PROMPT_DEFENSE = (
 )
 
 
+def _receipt(effects: Effects, call: Payment | Email) -> str:
+    """Run the call with no policy at all, and show the model what the tool returned."""
+    return str(effects.call(effects.keyed(call), confirmed=False).receipt)
+
+
 class VulnerableAgent:
     def __init__(
         self, model: ChatModel, web: MockWeb, prompt_defense: bool = False, max_steps: int = 8
@@ -60,7 +66,7 @@ class VulnerableAgent:
         self.max_steps = max_steps
 
     @staticmethod
-    def _pay(tools: WorldTools, action: dict[str, Any], ctx: UserContext) -> str:
+    def _pay(effects: Effects, action: dict[str, Any], ctx: UserContext) -> str:
         """A wallet tool as a real one behaves: saved payee names resolve to their address, and a
         payment without a valid positive amount is rejected with an error the model can read.
         An address the model supplies is used exactly as given."""
@@ -75,13 +81,13 @@ class VulnerableAgent:
         payee = ctx.payee_allowlist.get(payee, payee)
         if not _ADDRESS.fullmatch(payee):
             return "error: payee must be a saved payee name or a 0x address of 40 hex digits"
-        return tools.pay(payee, amount, str(action.get("memo", "")))
+        return _receipt(effects, Payment(payee, amount, str(action.get("memo", ""))))
 
     def run(self, user_text: str, ctx: UserContext, audit: AuditLog | None = None) -> RunResult:
         audit = audit or AuditLog()
-        ledger = Ledger()
-        client = self.web.client()
-        fetcher, tools = Fetcher(client), WorldTools(client, ledger)
+        world = WorldTools()
+        effects = Effects(world.pay, world.send_email, audit, run_id=uuid.uuid4().hex)
+        fetcher = Fetcher(self.web.transport())
         payees = "; ".join(f"{a}={addr}" for a, addr in ctx.payee_allowlist.items()) or "none"
         system = SYSTEM % {"payees": payees} + (PROMPT_DEFENSE if self.prompt_defense else "")
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user_text}]
@@ -110,18 +116,18 @@ class VulnerableAgent:
                 if kind == "fetch":
                     try:
                         doc = fetcher.fetch(str(action.get("url", "")))
-                        ledger.fetches.append(doc.provenance.final_url)
                         result = f"TOOL RESULT (fetch {doc.provenance.final_url}):\n{doc.raw}"
                     except FetchError as exc:
                         result = f"TOOL RESULT: error {exc}"
                 elif kind == "pay":
-                    result = "TOOL RESULT: " + self._pay(tools, action, ctx)
+                    result = "TOOL RESULT: " + self._pay(effects, action, ctx)
                 elif kind == "send_email":
-                    result = "TOOL RESULT: " + tools.send_email(
+                    email = Email(
                         str(action.get("to", "")),
                         str(action.get("subject", "")),
                         str(action.get("body", "")),
                     )
+                    result = "TOOL RESULT: " + _receipt(effects, email)
                 else:
                     error = f"unknown action {kind!r}"
                     audit.emit("error", error=error)
@@ -135,12 +141,10 @@ class VulnerableAgent:
         except Exception as exc:  # noqa: BLE001 - keep side effects that already happened
             error = f"{type(exc).__name__}: {exc}"
             audit.emit("error", error=error)
-        finally:
-            client.close()
         return RunResult(
             final_text=final,
-            ledger=ledger,
             audit=audit,
+            actions=tuple(effects.actions),
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             latency_s=time.perf_counter() - start,

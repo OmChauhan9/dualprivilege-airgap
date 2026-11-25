@@ -1,21 +1,26 @@
-"""Side-effecting tools. They only write to the ledger; there is nothing real behind them."""
+"""The mock world's bank and mailbox: the `pay` and `send_email` a developer would pass.
+
+They record what they received in their own Ledger, which the guard cannot write. The eval checks
+that the guard's `RunResult.ledger` agrees with it.
+"""
 
 from __future__ import annotations
 
-import httpx
+from dataclasses import dataclass, field
 
-from airgap.world.ledger import Email, Ledger, Payment
+from airgap.core.actions import Email, Ledger, Payment
 
 
+@dataclass
 class WorldTools:
-    def __init__(self, client: httpx.Client, ledger: Ledger) -> None:
-        self.client = client
-        self.ledger = ledger
+    """One per run. Passed as `Airgap(pay=world.pay, send_email=world.send_email)`."""
 
-    def pay(self, payee: str, amount_usd: float, memo: str = "") -> str:
-        self.ledger.payments.append(Payment(payee, float(amount_usd), memo))
-        return f"paid {amount_usd:g} USD to {payee}"
+    ledger: Ledger = field(default_factory=Ledger)
 
-    def send_email(self, to: str, subject: str, body: str) -> str:
-        self.ledger.emails.append(Email(to, subject, body))
-        return f"email sent to {to}"
+    def pay(self, p: Payment) -> str:
+        self.ledger.payments.append(p)
+        return f"paid {p.amount_usd:g} USD to {p.payee}"
+
+    def send_email(self, e: Email) -> str:
+        self.ledger.emails.append(e)
+        return f"email sent to {e.to}"

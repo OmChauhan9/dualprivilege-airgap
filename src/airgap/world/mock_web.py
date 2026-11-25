@@ -38,5 +38,6 @@ class MockWeb:
             headers["location"] = route.location
         return httpx.Response(route.status, text=route.body, headers=headers)
 
-    def client(self) -> httpx.Client:
-        return httpx.Client(transport=httpx.MockTransport(self._handle), follow_redirects=True)
+    def transport(self) -> httpx.BaseTransport:
+        """What the eval, the demo and the tests pass as `Airgap(transport=...)`."""
+        return httpx.MockTransport(self._handle)

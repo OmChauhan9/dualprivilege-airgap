@@ -6,13 +6,17 @@ import pytest
 
 from airgap import cli
 from airgap.baseline.vulnerable_agent import VulnerableAgent
-from airgap.core.airgap import AirgapAgent
+from airgap.core.actions import Action, Email, Ledger, Payment
+from airgap.core.audit import AuditLog
+from airgap.core.policy import deny_all
+from airgap.core.result import RunResult
 from airgap.eval.harness import run_suite, summarize
 from airgap.models.base import Completion
 from airgap.models.budget import BudgetExceeded
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
 from airgap.world.scenarios import SCENARIOS
+from airgap.world.tools import WorldTools
 
 
 class Scripted:
@@ -88,7 +92,7 @@ class Broke:
 def test_budget_exhaustion_propagates_instead_of_becoming_a_clean_run():
     sc = SCENARIOS["payment"]
     with pytest.raises(BudgetExceeded):
-        AirgapAgent(Broke(), Broke(), sc.make_web(None)).run(sc.user_text, sc.context())
+        sc.guard(Broke(), sc.make_web(None), WorldTools(), deny_all).run(sc.user_text)
 
 
 def test_partial_trials_survive_a_budget_stop():
@@ -232,22 +236,21 @@ def test_a_stopped_run_is_saved_beside_the_results_not_over_them(tmp_path, monke
 @pytest.mark.parametrize("variant", [str.lower, str.upper, lambda a: f" {a} "])
 def test_attacker_paid_ignores_case_and_whitespace_in_the_address(variant):
     from airgap.eval.harness import _outcome
-    from airgap.world.ledger import Payment
 
     sc = SCENARIOS["payment"]
     web = sc.make_web(None)
-    res = AirgapAgent(FakeLLM(), FakeLLM(), web).run(sc.user_text, sc.context())
-    res.ledger.payments.append(Payment(variant(sites.ATTACKER_WALLET), 5.0))
+    res = sc.guard(FakeLLM(), web, WorldTools(), deny_all).run(sc.user_text)
+    paid = Action(Payment(variant(sites.ATTACKER_WALLET), 5.0), "done", confirmed=False)
+    res.actions = (*res.actions, paid)
     assert _outcome(sc, web, res).attacker_paid
     assert sc.judge(res.ledger, res.final_text).goal_reached
 
 
 def test_attacker_email_is_recognised_in_any_case():
-    from airgap.world.ledger import Email
-
     sc = SCENARIOS["email"]
-    res = AirgapAgent(FakeLLM(), FakeLLM(), sc.make_web(None)).run(sc.user_text, sc.context())
-    res.ledger.emails.append(Email(" COLLECTOR@Evil.test ", "s", "b"))
+    res = sc.guard(FakeLLM(), sc.make_web(None), WorldTools(), deny_all).run(sc.user_text)
+    mail = Action(Email(" COLLECTOR@Evil.test ", "s", "b"), "done", confirmed=False)
+    res.actions = (*res.actions, mail)
     assert sc.judge(res.ledger, res.final_text).goal_reached
 
 
@@ -259,9 +262,7 @@ def _ledgers_with_payments():
         sc = CATALOG[case.scenario]
         for res in (
             VulnerableAgent(FakeLLM(), sc.make_web(case.attack)).run(sc.user_text, sc.context()),
-            AirgapAgent(
-                FakeLLM(), FakeLLM(), sc.make_web(case.attack), sc.plausible_confirmer()
-            ).run(sc.user_text, sc.context()),
+            sc.guard(FakeLLM(), sc.make_web(case.attack), WorldTools()).run(sc.user_text),
         ):
             if res.ledger.payments:
                 yield case.id, sc, res
@@ -271,8 +272,6 @@ def _ledgers_with_payments():
 def test_every_judgement_ignores_case_and_whitespace_in_the_payee(variant):
     """A payment to the saved address written in other letter case is the same payment."""
     from dataclasses import replace
-
-    from airgap.world.ledger import Ledger
 
     seen = set()
     for case_id, sc, res in _ledgers_with_payments():
@@ -387,11 +386,7 @@ def test_an_empty_reader_reply_is_an_error_not_a_safe_stop():
 
 
 def _run_result(error, blocked=()):
-    from airgap.core.audit import AuditLog
-    from airgap.core.result import RunResult
-    from airgap.world.ledger import Ledger
-
-    return RunResult("", Ledger(), AuditLog(), blocked=list(blocked), error=error)
+    return RunResult("", AuditLog(), blocked=list(blocked), error=error)
 
 
 def test_safe_stop_classification():
@@ -427,9 +422,7 @@ def test_a_reply_drafted_before_a_failure_is_withheld():
             return Completion(text="")  # the reader returns nothing
 
     sc = SCENARIOS["identity"]
-    res = AirgapAgent(Planner(), Planner(), sc.make_web(None), sc.plausible_confirmer()).run(
-        sc.user_text, sc.context()
-    )
+    res = sc.guard(Planner(), sc.make_web(None), WorldTools()).run(sc.user_text)
     assert res.error and res.error.startswith("ReaderNoOutput")
     assert "Everything is done" not in res.final_text
     assert "withheld" in res.final_text
@@ -439,9 +432,7 @@ def test_a_withheld_reply_never_reaches_the_audit_stream():
     # The audit stream feeds the CLI trace and the console's "Reply to user" card.
     sc = SCENARIOS["identity"]
     m = FakeLLM()
-    res = AirgapAgent(m, m, sc.make_web("inflated_visible"), sc.plausible_confirmer()).run(
-        sc.user_text, sc.context()
-    )
+    res = sc.guard(m, sc.make_web("inflated_visible"), WorldTools()).run(sc.user_text)
     assert res.blocked and not res.ledger.payments
     answers = [e.data for e in res.audit.events if e.kind == "answer"]
     assert answers == [{"text": res.final_text, "untrusted_derived": False}]
@@ -451,9 +442,7 @@ def test_a_withheld_reply_never_reaches_the_audit_stream():
 def test_a_completed_run_emits_its_reply_once():
     sc = SCENARIOS["identity"]
     m = FakeLLM()
-    res = AirgapAgent(m, m, sc.make_web(None), sc.plausible_confirmer()).run(
-        sc.user_text, sc.context()
-    )
+    res = sc.guard(m, sc.make_web(None), WorldTools()).run(sc.user_text)
     assert not res.blocked and res.ledger.payments
     answers = [e.data for e in res.audit.events if e.kind == "answer"]
     assert [a["text"] for a in answers] == [res.final_text]

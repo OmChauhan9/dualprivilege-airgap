@@ -3,10 +3,10 @@
 import pytest
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
-from airgap.core.airgap import AirgapAgent
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
 from airgap.world.scenarios import SCENARIOS
+from airgap.world.tools import WorldTools
 
 HIDDEN_CHANNELS = [c for c in sites.CHANNELS if c != "visible_text"]
 
@@ -20,10 +20,7 @@ def run_baseline(scenario_id: str, channel: str | None):
 def run_airgap(scenario_id: str, channel: str | None, confirmer=None):
     """Default confirmer is a plausible user (approves what a dialog lets them verify)."""
     sc = SCENARIOS[scenario_id]
-    agent = AirgapAgent(
-        FakeLLM(), FakeLLM(), sc.make_web(channel), confirmer or sc.plausible_confirmer()
-    )
-    res = agent.run(sc.user_text, sc.context())
+    res = sc.guard(FakeLLM(), sc.make_web(channel), WorldTools(), confirmer).run(sc.user_text)
     return res, sc.judge(res.ledger, res.final_text)
 
 
@@ -77,6 +74,8 @@ def test_steering_visible_lie_is_a_known_limitation():
 
 
 def test_orchestrator_never_sees_page_content():
+    from airgap.core.policy import deny_all
+
     sc = SCENARIOS["payment"]
 
     class Spy(FakeLLM):
@@ -87,6 +86,8 @@ def test_orchestrator_never_sees_page_content():
                 Spy.seen.append(" ".join(m["content"] for m in messages))
             return super().complete(messages, role=role, schema=schema)
 
-    AirgapAgent(Spy(), FakeLLM(), sc.make_web("css_display_none")).run(sc.user_text, sc.context())
+    sc.guard(Spy(), sc.make_web("css_display_none"), WorldTools(), deny_all, reader=FakeLLM()).run(
+        sc.user_text
+    )
     joined = " ".join(Spy.seen)
     assert "SYSTEM NOTICE" not in joined and sites.ATTACKER_WALLET not in joined

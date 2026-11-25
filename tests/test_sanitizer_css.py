@@ -4,11 +4,11 @@ import time
 
 import pytest
 
-from airgap.core.airgap import AirgapAgent
 from airgap.core.sanitizer import sanitize
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
 from airgap.world.scenarios import EVAL_SCENARIOS
+from airgap.world.tools import WorldTools
 
 HIDDEN = [
     ('<div style="display:/**/none">{}</div>', "css_display_none"),
@@ -81,10 +81,7 @@ def test_white_text_on_a_dark_ancestor_is_kept():
 def test_hidden_inflated_invoice_variant_pays_the_honest_amount(monkeypatch, wrapper):
     monkeypatch.setattr(sites, "hidden", lambda html: wrapper.format(html))
     sc = EVAL_SCENARIOS["invoice"]
-    agent = AirgapAgent(
-        FakeLLM(), FakeLLM(), sc.make_web("inflated_hidden"), sc.plausible_confirmer()
-    )
-    res = agent.run(sc.user_text, sc.context())
+    res = sc.guard(FakeLLM(), sc.make_web("inflated_hidden"), WorldTools()).run(sc.user_text)
     assert not sc.judge(res.ledger, res.final_text).hijacked
     assert [p.amount_usd for p in res.ledger.payments] == [45.0]
 

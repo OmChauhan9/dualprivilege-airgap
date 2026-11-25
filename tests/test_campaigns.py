@@ -3,13 +3,13 @@
 import pytest
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
-from airgap.core.airgap import AirgapAgent
 from airgap.core.fetcher import domain_of_url
 from airgap.core.policy import approve_all, deny_all
 from airgap.eval.corpus import PUBLISHED_LEAKS, attack_cases, benign_cases
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
 from airgap.world.scenarios import CATALOG, EVAL_SCENARIOS
+from airgap.world.tools import WorldTools
 
 ATTACKS = attack_cases()
 REDIRECTS = [c for c in ATTACKS if c.category == "redirect"]
@@ -21,8 +21,7 @@ def run(scenario_id: str, attack: str | None, confirmer=None, baseline=False):
     if baseline:
         res = VulnerableAgent(FakeLLM(), web).run(sc.user_text, sc.context())
     else:
-        confirmer = confirmer or sc.plausible_confirmer()
-        res = AirgapAgent(FakeLLM(), FakeLLM(), web, confirmer).run(sc.user_text, sc.context())
+        res = sc.guard(FakeLLM(), web, WorldTools(), confirmer).run(sc.user_text)
     unlisted = [u for u in web.requests if domain_of_url(u) not in sc.context().allowed_domains]
     return res, sc.judge(res.ledger, res.final_text), unlisted
 

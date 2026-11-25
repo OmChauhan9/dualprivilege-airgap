@@ -221,15 +221,21 @@ def _pay_then_answer(template, args):
     ],
 )
 def test_an_answer_template_that_cannot_render_is_rejected_and_nothing_is_paid(template, args):
-    from airgap.core.airgap import AirgapAgent
+    from airgap.core.airgap import Airgap
     from airgap.models.fake import FakeLLM
     from airgap.world.mock_web import MockWeb
+    from airgap.world.tools import WorldTools
 
     plan = _pay_then_answer(template, args)
     assert any("template" in p for p in validate_plan(Plan.model_validate(plan), PAY_CTX))
-    res = AirgapAgent(Chatty([json.dumps(plan)] * 2), FakeLLM(), MockWeb()).run(
-        PAY_CTX.user_text, PAY_CTX
+    guard = Airgap(
+        planner=Chatty([json.dumps(plan)] * 2),
+        reader=FakeLLM(),
+        pay=WorldTools().pay,
+        payees=PAY_CTX.payee_allowlist,
+        transport=MockWeb().transport(),
     )
+    res = guard.run(PAY_CTX.user_text)
     assert res.ledger.payments == []
     assert res.error and res.error.startswith("PlanRejected")
 

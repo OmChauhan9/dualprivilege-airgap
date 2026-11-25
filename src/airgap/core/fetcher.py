@@ -24,8 +24,18 @@ class FetchError(RuntimeError):
     pass
 
 
-# Called with each redirect target before it is requested; raise FetchError to stop.
-HopCheck = Callable[[str], None]
+class AddressRefused(FetchError):
+    """A host resolved to a non-public address; raised by the guard's transport at connect time.
+    `host` passed P5, so naming it quotes no page text."""
+
+    def __init__(self, host: str) -> None:
+        super().__init__(f"{host} resolves to a non-public address")
+        self.host = host
+
+
+# Called with (the URL that redirected, the redirect target) before the target is requested;
+# raise FetchError to stop.
+HopCheck = Callable[[str, str], None]
 
 
 def registrable_domain(host: str) -> str:
@@ -332,8 +342,8 @@ def _decode(body: bytes, charset: str) -> str:
 
 
 class Fetcher:
-    def __init__(self, client: httpx.Client) -> None:
-        self.client = client
+    def __init__(self, transport: httpx.BaseTransport) -> None:
+        self.transport = transport
         self._n = 0
 
     def fetch(self, url: str, check_hop: HopCheck | None = None) -> FetchedDoc:
@@ -344,8 +354,11 @@ class Fetcher:
         visited: list[httpx.Response] = []
         current = url
         for _ in range(MAX_REDIRECTS + 1):
+            request = httpx.Request("GET", current)
             try:
-                resp = self.client.get(current, follow_redirects=False)
+                resp = self.transport.handle_request(request)
+                resp.request = request
+                resp.read()
             except httpx.RemoteProtocolError as exc:
                 # httpx quotes what the server sent, such as a malformed Location header.
                 raise FetchError("the server sent a malformed response") from exc
@@ -353,11 +366,15 @@ class Fetcher:
             location = resp.headers.get("location")
             if not (resp.is_redirect and location):
                 break
-            current = urljoin(str(resp.url), location)
-            if urlsplit(current).scheme not in ("http", "https"):
+            try:
+                prev, current = current, urljoin(str(resp.url), location)
+                scheme = urlsplit(current).scheme
+            except ValueError as exc:  # a Location header no URL parser accepts
+                raise FetchError("the server sent a malformed response") from exc
+            if scheme not in ("http", "https"):
                 raise FetchError("redirect to a url that is not http or https")
             if check_hop is not None:
-                check_hop(current)
+                check_hop(prev, current)
         else:
             raise FetchError(f"too many redirects (more than {MAX_REDIRECTS})")
         content = resp.content[:MAX_BYTES]
