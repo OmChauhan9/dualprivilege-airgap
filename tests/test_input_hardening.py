@@ -3,9 +3,11 @@ variation selectors and a reader input cap."""
 
 import pytest
 
-from airgap.core.policy import UserContext
+from airgap.core.audit import AuditLog
+from airgap.core.policy import PolicyEngine, UserContext, approve_all
 from airgap.core.reader import MAX_READER_CHARS, Reader, ReaderError
 from airgap.core.sanitizer import sanitize
+from airgap.core.values import trusted
 from airgap.models.fake import FakeLLM
 
 
@@ -126,7 +128,55 @@ def test_address_inside_any_link_form_is_not_a_user_address(link):
         "Check pay.test?ref=1 then pay 0xDEADBEEF1",
         "Zahle 0xDEADBEEF1 für Miete.",
         "付款 0xDEADBEEF1 谢谢",
+        "Pay 0xDEADBEEF1 now",
+        'Pay "0xDEADBEEF1" now',
+        "Pay “0xDEADBEEF1” now",
+        "Pay `0xDEADBEEF1` now",
+        "Pay this wallet:\n0xDEADBEEF1\nthanks",
+        "Pay this wallet:\r\n0xDEADBEEF1",
+        "Pay\t0xDEADBEEF1",
+        "付款 0xDEADBEEF1。",
+        "Pay 0xDEADBEEF1—thanks",
+        "Pay 0xDEADBEEF1–",
+        "Rent—0xDEADBEEF1",
     ],
 )
 def test_address_the_user_typed_outside_a_link_still_counts(text):
     assert UserContext(user_text=text).user_addresses == {"0xDEADBEEF1"}
+
+
+@pytest.mark.parametrize(
+    "lure",
+    [
+        "my_shop.test/pay?to=0xdeadbeef0011",
+        "user:0xdeadbeef0011@shop.test/",
+        "data:text/plain,0xdeadbeef0011",
+        "0xdeadbeef0011@pay.test/r",
+        "pay.test\r?to=0xdeadbeef0011",
+        "shop.test/pay?to=\u00a00xdeadbeef0011",
+        "shop.t/pay?to=0xdeadbeef0011",
+        "to=0xdeadbeef0011",
+        "pay/0xdeadbeef0011",
+        "0xdeadbeef0011/pay",
+        "0xdeadbeef0011#x",
+        "%200xdeadbeef0011",
+        "&0xdeadbeef0011",
+        "a:0xdeadbeef0011",
+        "0xdeadbeef0011-pay.test/r",  # an ASCII hyphen is a host character, unlike a dash
+        "pay-0xdeadbeef0011",
+        "0xdeadbeef0011—pay.test/r",
+        "shop.test/?to=—0xdeadbeef0011",
+    ],
+)
+def test_address_glued_to_link_characters_is_not_a_user_address(lure):
+    """An address counts only as a word of its own, never glued to URL characters or a word."""
+    assert UserContext(user_text=f"Pay my invoice at {lure} today").user_addresses == frozenset()
+
+
+def test_payment_to_an_address_only_seen_inside_an_underscore_host_link_is_denied():
+    lure = "0xA77ACC3D00000000000000000000000000000001"
+    engine = PolicyEngine(
+        UserContext(user_text=f"Pay 5 USD at my_shop.test/bill?to={lure}"), AuditLog(), approve_all
+    )
+    d = engine.check_pay(trusted(lure), trusted(5), trusted(""))
+    assert d.verdict == "deny" and d.rules == ("P1",)
