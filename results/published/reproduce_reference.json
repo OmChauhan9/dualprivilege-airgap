@@ -1,8 +1,8 @@
 {
  "command": "airgap reproduce",
- "started_utc": "2026-11-25T06:53:53+00:00",
- "finished_utc": "2026-11-25T06:53:54+00:00",
- "seconds": 0.44,
+ "started_utc": "2026-11-25T07:04:06+00:00",
+ "finished_utc": "2026-11-25T07:04:07+00:00",
+ "seconds": 0.43,
  "seed": "none needed (deterministic)",
  "machine": {
   "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
@@ -52,11 +52,11 @@
    "uvicorn": "0.54.0"
   },
   "git": {
-   "commit": "f0a4fdfb3b5b1bdd33686ae7d7f81f6c44f9387c",
+   "commit": "e7f098cc5eef7e81403e6082f93f4440e333669f",
    "dirty": false
   }
  },
- "checks": 297,
+ "checks": 330,
  "mismatches": 0,
  "steps": [
   {
@@ -66,7 +66,12 @@
   },
   {
    "name": "numbers",
-   "checks": 294,
+   "checks": 307,
+   "mismatches": []
+  },
+  {
+   "name": "not_covered",
+   "checks": 20,
    "mismatches": []
   }
  ],
@@ -100,11 +105,6 @@
    "doc": "README.md",
    "quote": "upper bound about 6-7%",
    "reason": "A range written from two Wilson bounds (0/57 and 0/51). Both k/n are checked."
-  },
-  {
-   "doc": "README.md",
-   "quote": "4 were fetch refusals (3 unlisted domains and 1 HTTP 503)",
-   "reason": "The 4 is checked. The 3 and 1 split would need parsing error text, which is not a recorded field."
   },
   {
    "doc": "README.md",
@@ -144,27 +144,22 @@
   {
    "doc": "docs/demo-script.md",
    "quote": "the unguarded pane finishes in about 6 s, the airgapped one in about 12 s",
-   "reason": "Depends on the console player's timing constants in web/src, not on a result file."
+   "reason": "Deriving it needs the console player's timing constants (the dwell per event and the playback speed in web/src), which this Python command does not read."
   },
   {
    "doc": "docs/demo-script.md",
    "quote": "About 10 s.",
-   "reason": "Depends on the console player's timing constants in web/src, not on a result file."
+   "reason": "Deriving it needs the console player's timing constants (the dwell per event and the playback speed in web/src), which this Python command does not read."
+  },
+  {
+   "doc": "docs/demo-script.md",
+   "quote": "33 of its 34 hijacks were page data",
+   "reason": "The difference of two covered numbers: 34 hijacks less the 1 `identity:split_notice` run. Both are checked here too."
   },
   {
    "doc": "docs/adr/0004-report-confirmation-modes-separately.md",
    "quote": "\"0 of 40\" is shown with its upper bound",
    "reason": "An illustrative example, not a result."
-  },
-  {
-   "doc": "docs/architecture.md",
-   "quote": "# [('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1",
-   "reason": "The output of an illustrative code example. tests/ cover the behavior."
-  },
-  {
-   "doc": "README.md",
-   "quote": "A full re-measure costs about $21.",
-   "reason": "An estimate of future spend, not a recorded result."
   },
   {
    "doc": "README.md",
