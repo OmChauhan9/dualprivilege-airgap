@@ -195,6 +195,38 @@ def test_a_page_without_a_charset_a_browser_is_sure_to_use_must_be_plain_ascii(p
         _fetch(page, "text/html")
 
 
+SHIFT_JIS_TEXT = "お支払い".encode("shift_jis") + b"<p>Amount due 45 USD " + ISO_2022_JP_PAGE[-30:]
+
+
+@pytest.mark.parametrize(
+    "decoy",
+    [
+        b"<meta data-charset=utf-8>",
+        b'<meta xcharset="utf-8">',
+        b'<meta name="charset=utf-8">',
+        b'<meta name="x" content="text/html; charset=utf-8">',  # no http-equiv
+        b"<!x <meta charset=utf-8>>",
+        b"<?x <meta charset=utf-8>>",
+        b"</x <meta charset=utf-8>>",
+        b'<!DOCTYPE html "<meta charset=utf-8">',
+        b"<div title='<meta charset=\"utf-8\">'></div>",
+        b"<!-- x --!><meta charset=utf-8><!-- -->",  # the prescan reads this as one comment
+        # Chrome reads <title> and <script> content as text, the HTML prescan as markup.
+        b"<title><meta charset=utf-8></title>",
+        b'<script>"<meta charset=utf-8>"</script>',
+    ],
+)
+def test_a_decoy_utf8_declaration_the_html_prescan_does_not_trust_is_refused(decoy):
+    with pytest.raises(FetchError, match="unsupported charset"):
+        _fetch(decoy + SHIFT_JIS_TEXT, "text/html")
+
+
+def test_a_utf16_xml_declaration_is_refused():
+    page = '<?xml version="1.0"?><p>Amount due 45 USD</p>'.encode("utf-16-le")
+    with pytest.raises(FetchError, match="unsupported charset"):
+        _fetch(page, "text/html")
+
+
 def test_a_plain_ascii_page_with_no_charset_still_decodes():
     assert _fetch(b"<p>Amount due 45 USD</p>", "text/html") == "<p>Amount due 45 USD</p>"
 
