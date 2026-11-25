@@ -245,3 +245,28 @@ def test_css4_font_and_color_hiding_variants_are_stripped(wrapper):
 )
 def test_ordinary_css4_values_are_kept(html):
     assert "KEEP" in sanitize(html).text
+
+
+# A CSS comment separates the tokens on either side, so it must not join them into one value.
+@pytest.mark.parametrize(
+    "style",
+    [
+        "font:700/**/1px serif",
+        "font:bold/**/700/* x */0.5px/**/serif",
+        "position:absolute;margin:0/**/0/**/0/**/-99999px",
+        "position:absolute;inset:-99999px/**/auto",
+        "transform:translate(-99999px,/**/0)",
+    ],
+)
+def test_comment_between_tokens_does_not_hide_a_trick(style):
+    out = sanitize(f'<p>Visible 42</p><span style="{style}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+def test_comment_in_a_presentation_attribute_does_not_hide_a_trick():
+    out = sanitize('<p>Visible 42</p><svg><text display="/**/none/**/">SECRET PAYLOAD</text></svg>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+def test_comment_inside_a_number_does_not_join_it_into_a_hiding_value():
+    assert "KEEP" in sanitize('<p style="position:absolute;left:-1/**/9999px">KEEP</p>').text
