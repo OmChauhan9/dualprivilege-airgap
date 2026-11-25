@@ -56,20 +56,19 @@ _CAP_RE = re.compile(
 )
 
 
-# Whole tokens only: a hex run glued to other word characters ("abc0x1234567") is not an address.
-# Anything a reader would take for a link: any scheme in any letter case, a protocol-relative
-# link, a bare host (labels in any script, optional trailing dot), IPv4 address, bracketed IPv6
-# literal or `localhost` followed by a path, query, fragment or port, or a wallet or mail link
-# (`ethereum:0x...`, `mailto:?body=0x...`). Wider than URL_RE on purpose: it only removes text
-# before addresses are extracted, so it can only shrink the set of addresses the user is taken to
-# have written.
-_LINK_RE = re.compile(
-    r"(?:\b[a-z][a-z0-9+.-]*://|//|\bwww\.|\b(?:ethereum|bitcoin|eip155|wc|mailto):"
-    r"|(?:\b(?:(?:(?:[^\W_]|-)+\.)+[^\W\d_](?:[^\W_]|-)+\.?|\d{1,3}(?:\.\d{1,3}){3}|localhost)"
-    r"|\[[0-9a-f.]*:[0-9a-f:.]*\])[/?#:])\S*",
-    re.I,
+# An address counts only as a word of its own: split on plain spaces, tabs and line breaks, with
+# nothing around it but quotes, brackets or sentence punctuation. Glued to a link character
+# (`/ ? = & @ : # %`), another word or an unusual space such as U+00A0, it is part of something
+# else, often a pasted link that carries a wallet the user never meant to name. A rule on the word
+# itself, not a link pattern, so no spelling of a link (`my_shop.test/`, `user:0x...@host`,
+# `data:`) needs to be listed.
+_WORD_SEP_RE = re.compile(r"[ \t\r\n]+")
+_ADDRESS_WORD_RE = re.compile(
+    r"[(\[{<\"'`*\u201c\u2018\u00ab\u300c\u300e\uff08]*"
+    r"(0x[0-9a-fA-F]{6,})"
+    r"[)\]}>\"'`*\u201d\u2019\u00bb\u300d\u300f\uff09"
+    r".,;:!?\u2026\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f]*"
 )
-_ADDRESS_RE = re.compile(r"(?<!\w)0x[0-9a-fA-F]{6,}(?!\w)")
 
 
 @dataclass
@@ -89,7 +88,8 @@ class UserContext:
         An address inside a URL the user pasted does not count: a lure link can carry a wallet the
         user never meant to name.
         """
-        return frozenset(_ADDRESS_RE.findall(_LINK_RE.sub(" ", self.user_text)))
+        words = (_ADDRESS_WORD_RE.fullmatch(w) for w in _WORD_SEP_RE.split(self.user_text))
+        return frozenset(m.group(1) for m in words if m)
 
     @property
     def stated_cap_usd(self) -> float | None:
