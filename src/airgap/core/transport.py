@@ -5,15 +5,17 @@ the first request and every redirect hop alike. There is no separate check that 
 change after (rebinding). TLS still verifies the host name: httpcore passes the origin's name as
 SNI, while the TCP connection goes to the checked address.
 
-Built on httpcore, which httpx requires and pins; no package is added.
+Built on the public APIs of httpcore, which httpx requires and pins; no package is added.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import socket
+import threading
 import typing
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 
 import httpcore
 import httpx
@@ -28,6 +30,27 @@ Resolver = Callable[[str, int], Sequence[str]]
 def _system_resolver(host: str, port: int) -> Sequence[str]:
     infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     return [str(info[4][0]) for info in infos]
+
+
+def _resolve_within(resolve: Resolver, host: str, port: int, timeout: float | None) -> list[str]:
+    """`resolve` on a worker thread, given at most `timeout` seconds: getaddrinfo cannot be
+    interrupted, so a lookup that hangs is abandoned, not waited for."""
+    box: list[Sequence[str] | BaseException] = []
+
+    def work() -> None:
+        try:
+            box.append(resolve(host, port))
+        except BaseException as exc:  # noqa: BLE001 - handed back to the caller's thread
+            box.append(exc)
+
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if not box:
+        raise httpcore.ConnectTimeout("the host name lookup took too long")
+    if isinstance(box[0], BaseException):
+        raise httpcore.ConnectError("the host could not be resolved") from box[0]
+    return list(box[0])
 
 
 class _PublicOnlyBackend(httpcore.NetworkBackend):
@@ -53,9 +76,10 @@ class _PublicOnlyBackend(httpcore.NetworkBackend):
         socket_options: typing.Iterable[httpcore.SOCKET_OPTION] | None = None,
     ) -> httpcore.NetworkStream:
         name = host.lower().rstrip(".")
+        found = _resolve_within(self._resolve, name, port, timeout)
         try:
-            answers = [ipaddress.ip_address(a.split("%", 1)[0]) for a in self._resolve(name, port)]
-        except (OSError, ValueError) as exc:
+            answers = [ipaddress.ip_address(a.split("%", 1)[0]) for a in found]
+        except ValueError as exc:
             raise httpcore.ConnectError("the host could not be resolved") from exc
         exempt = name in self._private_hosts
         if not answers or not (exempt or all(is_public_address(a) for a in answers)):
@@ -83,15 +107,80 @@ class _PublicOnlyBackend(httpcore.NetworkBackend):
         self._inner.sleep(seconds)
 
 
-class PublicTransport(httpx.HTTPTransport):
-    """`httpx.HTTPTransport` whose connection pool uses `_PublicOnlyBackend`.
+# httpcore's exceptions as httpx names them, so callers handle one family.
+_AS_HTTPX: tuple[tuple[type[Exception], type[httpx.TransportError]], ...] = (
+    (httpcore.ConnectTimeout, httpx.ConnectTimeout),
+    (httpcore.ReadTimeout, httpx.ReadTimeout),
+    (httpcore.WriteTimeout, httpx.WriteTimeout),
+    (httpcore.PoolTimeout, httpx.PoolTimeout),
+    (httpcore.ConnectError, httpx.ConnectError),
+    (httpcore.ReadError, httpx.ReadError),
+    (httpcore.WriteError, httpx.WriteError),
+    (httpcore.RemoteProtocolError, httpx.RemoteProtocolError),
+    (httpcore.LocalProtocolError, httpx.LocalProtocolError),
+)
+
+
+@contextmanager
+def _httpx_errors() -> Iterator[None]:
+    try:
+        yield
+    except AddressRefused:
+        raise
+    except Exception as exc:
+        for theirs, ours in _AS_HTTPX:
+            if isinstance(exc, theirs):
+                raise ours(str(exc)) from exc
+        raise
+
+
+class _Body(httpx.SyncByteStream):
+    def __init__(self, stream: Iterable[bytes]) -> None:
+        self._stream = stream
+
+    def __iter__(self) -> Iterator[bytes]:
+        with _httpx_errors():
+            yield from self._stream
+
+    def close(self) -> None:
+        close = getattr(self._stream, "close", None)
+        if close is not None:
+            close()
+
+
+class PublicTransport(httpx.BaseTransport):
+    """An httpx transport over `httpcore.ConnectionPool` with the public-address backend.
 
     No proxy, no environment settings, no retries, certificate verification on.
     """
 
     def __init__(self, private_hosts: Iterable[str] = (), resolve: Resolver = _system_resolver):
-        super().__init__(trust_env=False)
         self._pool = httpcore.ConnectionPool(
             ssl_context=httpx.create_ssl_context(trust_env=False),
             network_backend=_PublicOnlyBackend(frozenset(private_hosts), resolve),
         )
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        assert isinstance(request.stream, httpx.SyncByteStream)
+        url = request.url
+        core = httpcore.Request(
+            method=request.method,
+            url=httpcore.URL(
+                scheme=url.raw_scheme, host=url.raw_host, port=url.port, target=url.raw_path
+            ),
+            headers=request.headers.raw,
+            content=request.stream,
+            extensions=request.extensions,
+        )
+        with _httpx_errors():
+            resp = self._pool.handle_request(core)
+        assert isinstance(resp.stream, Iterable)
+        return httpx.Response(
+            status_code=resp.status,
+            headers=resp.headers,
+            stream=_Body(resp.stream),
+            extensions=resp.extensions,
+        )
+
+    def close(self) -> None:
+        self._pool.close()

@@ -252,8 +252,11 @@ in-process page, and CI runs it.
   function runs.
 
 Leave out `pay` or `send_email` and the guard never does that action (P0). The guard calls each
-approved function exactly once. It never retries. An async function, or one that does not take
-exactly one argument, is refused when the guard is built.
+approved function exactly once. It never retries. The guard checks its configuration when it is
+built, and an error names the argument. An async function, or one that cannot be called with one
+argument, is refused. So are a payee that is not a `0x` address, a recipient that is not an email
+address, a domain or private host that is not a host name, and limits that are not finite and
+positive, or where `per_payment_usd` exceeds `per_run_usd`.
 
 **What you see on an unknown outcome.** `result.unsettled` holds the call with its exact
 arguments, its idempotency key (`a.call.key`) and the exception (`a.exception`). It is never in
@@ -266,9 +269,8 @@ the duplicate. Without `run_id`, every run gets a random one.
 
 **The network.** The guard builds every request itself, with fixed headers. No client, hook,
 cookie or credential of yours reaches a page. Each fetch reads at most 1 MB, decompresses only
-gzip and deflate and only up to that cap, and stops after 20 s for all hops together (name lookups use the system resolver and its own
-timeout). The default
-transport connects only to public addresses, and checks the address it connects to, so DNS
+gzip and deflate and only up to that cap, and stops after 20 s for all hops together, name
+lookups included. The default transport connects only to public addresses, and checks the address it connects to, so DNS
 rebinding cannot get around it. To reach an intranet page the user names, list its exact host in
 `private_hosts`. `transport=` replaces the guard's transport. A transport you pass is trusted
 code. It must send one request per call and never follow redirects, and the guard does not check
