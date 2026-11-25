@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from airgap.core.actions import Action, Effects, Email, OutcomeUnknown, Payment
+from airgap.core.actions import Action, Effects, Email, OutcomeUnknown, Payment, kind_of
 from airgap.core.audit import AuditLog, AuditSinkFailed
 from airgap.core.fetcher import AddressRefused, FetchedDoc, Fetcher, FetchError
 from airgap.core.plan import (
@@ -277,7 +277,7 @@ class Interpreter:
     @staticmethod
     def _settle(action: Action, result: ExecResult) -> None:
         """Declined continues the plan, as a policy denial does; unknown stops the run."""
-        kind = "pay" if isinstance(action.call, Payment) else "send_email"
+        kind = kind_of(action.call)
         if action.outcome == "declined":
             result.denied.append(f"{kind} declined by your {kind} function")
         elif action.outcome == "unknown":
