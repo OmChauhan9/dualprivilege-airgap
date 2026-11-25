@@ -154,6 +154,18 @@ payee is ever authorized, whatever its value.
   defense and 6/57 with a prompt defense. On the whole-corpus run on commit `86468f3` (Oct 31):
   0/210 with the airgap, 15/210 without a defense and 15/210 with a prompt defense. Later fixes to
   the policy, sanitizer, fetcher and interpreter were not re-run on the real model.
+- **Ports and scheme.** A request keeps the scheme's default port unless the user named that exact
+  origin (`http://127.0.0.1:8080/` admits port 8080 on that host, nothing else). A hop never goes
+  from https to http. Every corpus URL is http on the default port, so these rules change no eval
+  result. Tests: `test_N9_*` in `tests/test_real_web.py`.
+- **Connect-time address check.** With the guard's own transport (`Airgap` with no `transport=`),
+  every connection goes only to a public address. The check runs on the address the socket then
+  connects to, and every answer for the host must be public, so DNS rebinding has no gap between
+  check and connect. Loopback, private, link-local (cloud metadata), shared, unique-local,
+  multicast and unspecified addresses are refused, also when wrapped in an IPv6 form. A host the
+  user named is refused too, unless the developer lists that exact host in `private_hosts`. A
+  refusal is reported as P5. The mock web never resolves names, so the eval does not exercise this
+  check. Tests: `test_N10_*`, `test_N11_*`.
 
 ### P6. A choice made by tainted data needs confirmation
 
@@ -176,6 +188,21 @@ comparison used page data.
 - **Reader schemas** (`src/airgap/core/schemas.py`) are flat and bounded, and have no identity or
   destination fields. Out-of-schema values stop the run: `identity:amount_negative`,
   `identity:enum_out_of_set`, `steering:price_negative`.
+- **P0. An action needs a developer function.** `Airgap` without `pay` (or `send_email`) denies
+  every payment (or email) with P0.
+- **Developer-function outcomes.** `pay` and `send_email` run only after the policy approves, and
+  exactly once. Return means done. `Declined` means certainly not done: the plan continues and the
+  reply is withheld. Any other exception means the outcome is unknown: the call goes to
+  `RunResult.unsettled`, never to the ledger, the run stops, and the reply says the action may or
+  may not have happened. Its amount stays counted against the run's limits in every case. The
+  exception text never reaches a result field, the audit log or a model. Tests: `test_D6_*` to
+  `test_D12_*` in `tests/test_byo_tools.py`.
+- **Re-entrancy.** A callback that calls `Airgap.run` again on the same thread or asyncio task is
+  refused, so nesting cannot multiply the per-run limits (`test_D13_*`).
+- **Confirmation is exactly True.** A confirm callback approves only by returning `True`. Any other
+  value, `"n"` and `1` included, is a refusal. A callback that raises is a refusal that is still
+  audited, and the run stops. The callback sees the frozen call that then runs, so it cannot change
+  it (`test_D2_*` to `test_D5_*`).
 - **Plan validation** runs before anything else. It checks allowlisted aliases, defined variables
   and their fields, known schemas, and that literal URLs are on user-named domains. A URL taken
   from a variable is checked at runtime.
@@ -266,6 +293,12 @@ Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
 - **Domain identity is a heuristic.** `registrable_domain` takes the last two labels, or three for
   a short list of multi-part suffixes. It is not the Public Suffix List, and there is no TLS
   provenance ([ADR 0003](docs/adr/0003-in-process-mock-web.md)).
+- **A transport the developer passes is trusted.** `Airgap(transport=...)` replaces the guard's
+  public-address transport. The guard then does not check where it connects, and it relies on the
+  transport to send one request per call and never follow redirects itself.
+- **Callbacks on another thread.** A callback that starts a thread and calls the guard from there
+  is not detected. That nested run gets its own limits. Limits are per run, and nothing bounds
+  spend across runs.
 - **Orchestrator mistakes.** A real orchestrator might plan a payment the user did not ask for.
   Pages cannot steer it, and P1 and P2 still bound the payee and the amount. But nothing in
   code checks that a payment matches the user's intent.
