@@ -208,3 +208,22 @@ def test_a_plain_ascii_page_with_no_charset_still_decodes():
 )
 def test_an_early_utf8_meta_still_decodes_without_a_header_charset(meta):
     assert "café" in _fetch(b"<head>" + meta + b"</head><p>caf\xc3\xa9</p>", "text/html")
+
+
+@pytest.mark.parametrize(
+    ("label", "page", "expected"),
+    [
+        ("utf-16", b"<p>caf\xc3\xa9</p>", "café"),
+        ("utf-16be", b"<p>caf\xc3\xa9</p>", "café"),
+        ("x-user-defined", b"<p>\x80 5</p>", "€ 5"),
+    ],
+)
+def test_a_meta_label_the_html_prescan_remaps_decodes_as_a_browser_does(label, page, expected):
+    # The HTML prescan reads a <meta> UTF-16 label as UTF-8 and x-user-defined as windows-1252.
+    assert expected in _fetch(f'<meta charset="{label}">'.encode() + page, "text/html")
+
+
+def test_a_header_with_a_charset_parameter_a_browser_reads_differently_is_refused():
+    # Fetch reads the second Content-Type value, so a browser would use shift_jis here.
+    with pytest.raises(FetchError, match="unsupported charset"):
+        _fetch(b"<p>\x81PAY</p>", "text/html; charset=utf-8, text/html; charset=shift_jis")
