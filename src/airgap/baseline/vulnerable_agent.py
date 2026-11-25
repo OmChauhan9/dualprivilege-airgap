@@ -87,7 +87,7 @@ class VulnerableAgent:
         audit = audit or AuditLog()
         world = WorldTools()
         effects = Effects(world.pay, world.send_email, audit, run_id=uuid.uuid4().hex)
-        fetcher = Fetcher(self.web.transport())
+        fetcher = Fetcher(self.web.transport(), read_error_pages=True)
         payees = "; ".join(f"{a}={addr}" for a, addr in ctx.payee_allowlist.items()) or "none"
         system = SYSTEM % {"payees": payees} + (PROMPT_DEFENSE if self.prompt_defense else "")
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user_text}]

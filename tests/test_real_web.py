@@ -201,7 +201,9 @@ def test_N7_a_compression_bomb_is_decoded_only_up_to_the_cap():
     bomb = gzip.compress(b"<p>" + b"a" * 50_000_000)
     t = httpx.MockTransport(
         lambda req: httpx.Response(
-            200, content=bomb, headers={"content-encoding": "gzip", "content-type": "text/html"}
+            200,
+            stream=httpx.ByteStream(bomb),
+            headers={"content-encoding": "gzip", "content-type": "text/html"},
         )
     )
     tracemalloc.start()

@@ -5,6 +5,8 @@ from __future__ import annotations
 import codecs
 import ipaddress
 import re
+import time
+import zlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
@@ -15,6 +17,17 @@ from airgap.core.values import Handle
 
 MAX_BYTES = 1_000_000
 MAX_REDIRECTS = 5
+# Wall clock for one fetch: every hop, its connect, headers and body. Each request's timeouts are
+# what is left of it, so no transport setting can extend it. Read at call time, so a test can
+# lower it.
+FETCH_DEADLINE_S = 20.0
+# Every header a site receives. Built by the guard; nothing comes from the caller's code.
+REQUEST_HEADERS = (
+    ("user-agent", "airgap/0.1"),
+    ("accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5"),
+    ("accept-encoding", "identity"),
+)
+_TOO_SLOW = "the page took too long"
 # URLs inside prose: stop before trailing sentence punctuation.
 URL_RE = re.compile(r"https?://[^\s)>\"']*[^\s)>\"'.,;:!?]")
 _MULTI_PART_SUFFIXES = {"co.uk", "org.uk", "com.au", "co.jp", "com.br"}
@@ -341,31 +354,102 @@ def _decode(body: bytes, charset: str) -> str:
     return body.decode(charset, errors="replace")
 
 
+def _unambiguous(url: str) -> None:
+    """P5 reads the host with urlsplit; the transport connects to httpx's reading of it. Refuse an
+    address the two read differently, so the host P5 checked is the host that is reached."""
+    try:
+        same = httpx.URL(url).host == (urlsplit(url).hostname or "")
+    except (httpx.InvalidURL, ValueError) as exc:
+        raise FetchError("the address is not a valid url") from exc
+    if not same:
+        raise FetchError("the address is ambiguous")
+
+
+def _read_body(resp: httpx.Response, deadline: float) -> bytes:
+    """At most MAX_BYTES of decoded body, pulling at most one chunk past the cap. gzip and deflate
+    are inflated with a bounded decompressor; any other Content-Encoding is refused."""
+    encoding = resp.headers.get("content-encoding", "identity").strip().lower()
+    if encoding in ("", "identity"):
+        inflater = None
+    elif encoding in ("gzip", "x-gzip"):
+        inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    elif encoding == "deflate":
+        inflater = zlib.decompressobj()
+    else:
+        raise FetchError("the site sent a page in an unsupported encoding")
+    stream = resp.stream
+    assert isinstance(stream, httpx.SyncByteStream)
+    out = bytearray()
+    for chunk in stream:
+        if inflater is not None:
+            try:
+                chunk = inflater.decompress(chunk, MAX_BYTES + 1 - len(out))
+            except zlib.error as exc:
+                raise FetchError("the site sent a corrupt compressed page") from exc
+        out += chunk
+        if len(out) > MAX_BYTES:
+            break
+        if time.monotonic() > deadline:
+            raise FetchError(_TOO_SLOW)
+    return bytes(out[:MAX_BYTES])
+
+
 class Fetcher:
-    def __init__(self, transport: httpx.BaseTransport) -> None:
+    """Per run. Sends requests it builds itself straight to a transport, never through a client.
+
+    Without a client there are no event hooks, no auth, no default headers, no cookie jar and no
+    environment proxy to leak a credential or rewrite a checked URL. The transport is trusted code:
+    it must send exactly one request per call and never follow redirects itself. The Fetcher never
+    closes it.
+
+    The guard never downloads the body of a non-2xx page, since P7 refuses it next. Only the
+    undefended baseline sets `read_error_pages`, so it sees error pages as a naive agent would.
+    """
+
+    def __init__(self, transport: httpx.BaseTransport, read_error_pages: bool = False) -> None:
         self.transport = transport
+        self.read_error_pages = read_error_pages
         self._n = 0
+
+    def _send(self, url: str, deadline: float) -> httpx.Response:
+        """One request. Every failure becomes a code-written FetchError; the original exception,
+        whose text may quote a Location header or the body, stays chained for a debugger."""
+        _unambiguous(url)
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise FetchError(_TOO_SLOW)
+        timeout = dict.fromkeys(("connect", "read", "write", "pool"), left)
+        request = httpx.Request(
+            "GET", url, headers=REQUEST_HEADERS, extensions={"timeout": timeout}
+        )
+        try:
+            resp = self.transport.handle_request(request)
+        except FetchError:
+            raise  # AddressRefused from the guard's transport
+        except httpx.RemoteProtocolError as exc:
+            raise FetchError("the server sent a malformed response") from exc
+        except httpx.TimeoutException as exc:
+            raise FetchError(_TOO_SLOW) from exc
+        except Exception as exc:  # noqa: BLE001 - any transport failure is a failed fetch
+            raise FetchError("the site could not be fetched") from exc
+        resp.request = request
+        return resp
 
     def fetch(self, url: str, check_hop: HopCheck | None = None) -> FetchedDoc:
         """Fetch `url`, following redirects by hand so every hop is checked before it is sent."""
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise FetchError(f"unsupported url: {url}")
+        deadline = time.monotonic() + FETCH_DEADLINE_S
         visited: list[httpx.Response] = []
         current = url
         for _ in range(MAX_REDIRECTS + 1):
-            request = httpx.Request("GET", current)
-            try:
-                resp = self.transport.handle_request(request)
-                resp.request = request
-                resp.read()
-            except httpx.RemoteProtocolError as exc:
-                # httpx quotes what the server sent, such as a malformed Location header.
-                raise FetchError("the server sent a malformed response") from exc
+            resp = self._send(current, deadline)
             visited.append(resp)
             location = resp.headers.get("location")
             if not (resp.is_redirect and location):
                 break
+            resp.close()  # a redirect's body is never read
             try:
                 prev, current = current, urljoin(str(resp.url), location)
                 scheme = urlsplit(current).scheme
@@ -377,7 +461,19 @@ class Fetcher:
                 check_hop(prev, current)
         else:
             raise FetchError(f"too many redirects (more than {MAX_REDIRECTS})")
-        content = resp.content[:MAX_BYTES]
+        try:
+            readable = resp.is_success or self.read_error_pages
+            content = _read_body(resp, deadline) if readable else b""
+        except FetchError:
+            raise
+        except httpx.RemoteProtocolError as exc:
+            raise FetchError("the server sent a malformed response") from exc
+        except httpx.TimeoutException as exc:
+            raise FetchError(_TOO_SLOW) from exc
+        except Exception as exc:  # noqa: BLE001 - any failure while reading is a failed fetch
+            raise FetchError("the site could not be fetched") from exc
+        finally:
+            resp.close()
         body = _decode(content, _decodable_charset(resp.headers.get("content-type"), content))
         final_url = str(resp.url)
         prov = Provenance(
