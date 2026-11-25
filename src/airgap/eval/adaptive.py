@@ -29,6 +29,7 @@ from airgap.core.airgap import AirgapAgent
 from airgap.core.policy import deny_all
 from airgap.core.schemas import SCHEMAS, json_schema_for
 from airgap.eval.harness import Outcome, _errored_outcome, _outcome, _stopped_safely
+from airgap.eval.machine import run_meta
 from airgap.eval.metrics import Rate
 from airgap.models.base import ChatModel, Completion, Message, Role, approx_tokens
 from airgap.models.budget import BudgetExceeded
@@ -663,6 +664,19 @@ def save(
     incomplete: bool = False,
 ) -> None:
     """Write attempts and their summary to their own file, marked as adaptive results."""
+    out = file_payload(attempts, attacker_name, target_name, rounds, scenario_ids, incomplete)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(out | {"run_meta": run_meta()}, indent=1))
+
+
+def file_payload(
+    attempts: list[Attempt],
+    attacker_name: str,
+    target_name: str,
+    rounds: int,
+    scenario_ids: tuple[str, ...],
+    incomplete: bool = False,
+) -> dict[str, Any]:
     summary = {
         cond: {
             name: _rate(getattr(m, name))
@@ -679,7 +693,7 @@ def save(
         | {"first_success": m.first_success, "scenario_errors": m.scenario_errors}
         for cond, m in summarize(attempts).items()
     }
-    payload: dict[str, Any] = {
+    out: dict[str, Any] = {
         "kind": KIND,
         "note": NOT_CORPUS,
         "attacker_model": attacker_name,
@@ -691,9 +705,8 @@ def save(
         "attempts": [a.record() for a in attempts],
     }
     if incomplete:
-        payload["incomplete"] = True
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=1))
+        out["incomplete"] = True
+    return out
 
 
 # ---- offline attacker --------------------------------------------------------------------

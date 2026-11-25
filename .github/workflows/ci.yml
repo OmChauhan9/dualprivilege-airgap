@@ -21,6 +21,13 @@ jobs:
       - run: uv run pyright
       # Offline test doubles only (FakeLLM and stubs). No secrets, no network model calls.
       - run: uv run pytest -q
+      # Re-checks every published number against its doc, offline. Exit 1 on any mismatch.
+      - run: uv run airgap reproduce --out repro.json
+      - if: always() && hashFiles('repro.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repro
+          path: repro.json
 
   web:
     name: web
