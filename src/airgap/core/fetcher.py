@@ -5,7 +5,7 @@ from __future__ import annotations
 import codecs
 import ipaddress
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
@@ -79,36 +79,114 @@ class FetchedDoc:
     provenance: Provenance
 
 
-# ASCII-compatible charsets that browsers decode the same way. A browser takes the charset from a
-# byte-order mark first, then the Content-Type header, then a <meta> tag in the first 1024 bytes.
-# Any other charset (EBCDIC, UTF-16, UTF-7, ISO-2022) could make the markup the sanitizer parses
-# differ from what a browser renders, so the page is refused rather than guessed at.
-# Browsers decode ASCII and ISO-8859-1 labels as windows-1252 (WHATWG Encoding Standard).
-_BROWSER_CHARSETS = {"utf-8": "utf-8", "ascii": "cp1252", "iso8859-1": "cp1252", "cp1252": "cp1252"}
+# A browser takes the charset from a byte-order mark first, then the Content-Type header, then a
+# <meta> tag in the first 1024 bytes, and may switch to a later <meta> or guess when there is none.
+# Only UTF-8 and windows-1252 are decoded, and only when a browser is sure to pick the same one.
+# Any other charset (EBCDIC, UTF-16, UTF-7, ISO-2022, Shift_JIS) could make the markup the
+# sanitizer parses differ from what a browser renders, so the page is refused rather than guessed.
+# The labels are the WHATWG Encoding Standard's, not Python's codec aliases.
+_WHATWG_LABELS: dict[str, str] = {
+    label: encoding
+    for encoding, labels in (
+        ("utf-8", "unicode-1-1-utf-8 unicode11utf8 unicode20utf8 utf-8 utf8 x-unicode20utf8"),
+        (
+            "windows-1252",
+            "ansi_x3.4-1968 ascii cp1252 cp819 csisolatin1 ibm819 iso-8859-1 iso-ir-100 iso8859-1"
+            " iso88591 iso_8859-1 iso_8859-1:1987 l1 latin1 us-ascii windows-1252 x-cp1252",
+        ),
+    )
+    for label in labels.split()
+}
+# In a <meta>, UTF-16 means UTF-8 and x-user-defined means windows-1252 (HTML prescan rule).
+_WHATWG_META_LABELS = (
+    _WHATWG_LABELS
+    | {
+        label: "utf-8"
+        for label in "csunicode iso-10646-ucs-2 ucs-2 unicode unicodefeff utf-16 utf-16le"
+        " unicodefffe utf-16be".split()
+    }
+    | {"x-user-defined": "windows-1252"}
+)
+# Python's cp1252 leaves five bytes undefined; WHATWG maps them to the C1 control of that number.
+_WINDOWS_1252_HIGH = str.maketrans(
+    {chr(b): bytes([b]).decode("cp1252", "replace") for b in range(0x80, 0xA0)}
+    | {chr(b): chr(b) for b in (0x81, 0x8D, 0x8F, 0x90, 0x9D)}
+)
 _UTF8_BOM = b"\xef\xbb\xbf"
 _OTHER_BOMS = (b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff", b"+/v")
 _HTML_COMMENT = re.compile(rb"<!--.*?(?:-->|$)", re.S)
-_META_CHARSET = re.compile(rb"""<meta[^>]*?charset\s*=\s*["']?\s*([^\s"'>;/]+)""", re.I)
+_DECLARATION = rb"""charset[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >"']*))"""
+_ANY_DECLARATION = re.compile(_DECLARATION, re.I)
+_META_DECLARATION = re.compile(rb"<meta[\t\n\f\r /][^>]*?" + _DECLARATION, re.I)
+# Bytes a browser's guess could read as something other than ASCII.
+_NOT_PLAIN_ASCII = re.compile(rb"[\x00\x1b\x80-\xff]")
+_TOKEN = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"
+_MIME_PARAM = rf"[\t ]*;[\t ]*({_TOKEN})=((?:(?![;,\"\\])[\x21-\x7e])+|\"[^\"\\]*\")"
+_SIMPLE_MIME = re.compile(rf"[\t ]*{_TOKEN}/{_TOKEN}(?:{_MIME_PARAM})*[\t ]*;?[\t ]*")
 
 
-def _decodable_charset(header_charset: str | None, body: bytes) -> str:
+def _unsupported(label: str) -> FetchError:
+    try:
+        name = codecs.lookup(label).name
+    except (LookupError, ValueError):
+        name = None
+    if name is None or name in ("utf-8", "cp1252", "iso8859-1", "ascii"):
+        # Unknown to browsers, even where Python has an alias for it.
+        return FetchError("unsupported charset: the page declares an unknown one")
+    return FetchError(f"unsupported charset {name!r}")
+
+
+def _encoding(label: str, labels: dict[str, str] = _WHATWG_LABELS) -> str:
+    encoding = labels.get(label.strip("\t\n\f\r ").lower())
+    if encoding is None:
+        raise _unsupported(label)
+    return encoding
+
+
+def _header_label(content_type: str | None) -> str | None:
+    if content_type is None or "charset" not in content_type.lower():
+        return None
+    # Browsers parse Content-Type by the Fetch Standard, which differs from httpx on odd headers
+    # (repeated types, a space before "=", */*). Only a plain one is read.
+    if not _SIMPLE_MIME.fullmatch(content_type) or content_type.split(";")[0].strip() == "*/*":
+        raise FetchError("unsupported charset: the Content-Type header is not a plain one")
+    for name, value in re.findall(_MIME_PARAM, content_type):
+        if name.lower() == "charset":
+            return value.strip('"')
+    return None
+
+
+def _labels(matches: Iterator[re.Match[bytes]]) -> list[str]:
+    found = (b"".join(m.groups(b"")).decode("latin-1") for m in matches)
+    return [label for label in found if label.strip("\t\n\f\r ")]  # browsers skip empty labels
+
+
+def _decodable_charset(content_type: str | None, body: bytes) -> str:
     if body.startswith(_UTF8_BOM):
         return "utf-8-sig"
     if body.startswith(_OTHER_BOMS):
         raise FetchError("unsupported charset: the page starts with a non-UTF-8 byte-order mark")
-    declared = header_charset
-    if not declared:
-        meta = _META_CHARSET.search(_HTML_COMMENT.sub(b"", body[:1024]))  # browsers skip comments
-        declared = meta.group(1).decode("ascii", "replace") if meta else None
-    if not declared:
-        return "utf-8"
-    try:
-        name = codecs.lookup(declared).name
-    except LookupError:
-        raise FetchError("unsupported charset: the page declares an unknown one") from None
-    if name not in _BROWSER_CHARSETS:
-        raise FetchError(f"unsupported charset {name!r}")
-    return _BROWSER_CHARSETS[name]
+    header = _header_label(content_type)
+    if header is not None:
+        return _encoding(header)
+    # A browser may act on any <meta> it meets while parsing, so every declaration must agree,
+    # and it surely sees only one in the first 1024 bytes outside a comment.
+    found = _labels(_ANY_DECLARATION.finditer(body))
+    declared = {_encoding(label, _WHATWG_META_LABELS) for label in found}
+    if len(declared) > 1:
+        raise FetchError("unsupported charset: the page declares conflicting ones")
+    early = _labels(_META_DECLARATION.finditer(_HTML_COMMENT.sub(b"", body[:1024])))
+    if declared and early:
+        return declared.pop()
+    if _NOT_PLAIN_ASCII.search(body):
+        raise FetchError("unsupported charset: the page declares none a browser is sure to use")
+    return "utf-8"
+
+
+def _decode(body: bytes, charset: str) -> str:
+    if charset == "windows-1252":
+        return body.decode("latin-1").translate(_WINDOWS_1252_HIGH)
+    return body.decode(charset, errors="replace")
 
 
 class Fetcher:
@@ -140,8 +218,8 @@ class Fetcher:
                 check_hop(current)
         else:
             raise FetchError(f"too many redirects (more than {MAX_REDIRECTS})")
-        charset = _decodable_charset(resp.charset_encoding, resp.content[:MAX_BYTES])
-        body = resp.content[:MAX_BYTES].decode(charset, errors="replace")
+        content = resp.content[:MAX_BYTES]
+        body = _decode(content, _decodable_charset(resp.headers.get("content-type"), content))
         final_url = str(resp.url)
         prov = Provenance(
             requested_url=url,
