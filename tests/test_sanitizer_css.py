@@ -155,3 +155,93 @@ def test_ordinary_markup_is_kept(html):
 def test_white_body_text_attribute_hides_the_page_text():
     out = sanitize('<body text="#ffffff"><p>SECRET PAYLOAD</p></body>')
     assert "SECRET PAYLOAD" not in out.text
+
+
+# CSS Values 4 length units, each of which a browser accepts for a size or an offset.
+LENGTH_UNITS = [
+    *("em", "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh", "rlh"),
+    *(
+        f"{prefix}{axis}"
+        for prefix in ("v", "sv", "lv", "dv")
+        for axis in ("w", "h", "i", "b", "min", "max")
+    ),
+    *("cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax"),
+    *("px", "cm", "mm", "q", "in", "pt", "pc"),
+]
+
+
+@pytest.mark.parametrize("unit", LENGTH_UNITS)
+def test_tiny_font_in_any_length_unit_is_stripped(unit):
+    out = sanitize(f'<p>Visible 42</p><span style="font-size:0.01{unit}">SECRET PAYLOAD</span>')
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+@pytest.mark.parametrize("unit", LENGTH_UNITS)
+def test_far_offset_in_any_length_unit_is_stripped(unit):
+    out = sanitize(
+        f'<p>Visible 42</p><span style="position:absolute;left:-99999{unit}">SECRET PAYLOAD</span>'
+    )
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+
+
+CSS4_HIDDEN = [
+    '<span style="font:700 1px serif">{}</span>',
+    '<span style="font:normal 400 0px serif">{}</span>',
+    '<span style="font:100 0.1px/1 serif">{}</span>',
+    '<span style="font:italic small-caps bold condensed 1px serif">{}</span>',
+    '<span style="font:oblique 10deg 900 2px/20px serif">{}</span>',
+    '<span style="font:1000 0.1svh serif">{}</span>',
+    '<span style="color:hsl(0, 0%, 98%)">{}</span>',
+    '<span style="color:hsl(0.5turn 0 98)">{}</span>',
+    '<span style="color:hsla(240 20% 99% / 1)">{}</span>',
+    '<span style="color:hwb(0 100% 0%)">{}</span>',
+    '<span style="color:hwb(120 96% 2%)">{}</span>',
+    '<span style="color:oklch(1 0 0)">{}</span>',
+    '<span style="color:oklch(98% 0.01 90)">{}</span>',
+    '<span style="color:oklab(0.99 0 0)">{}</span>',
+    '<span style="color:lab(100 0 0)">{}</span>',
+    '<span style="color:lab(98% 0 0)">{}</span>',
+    '<span style="color:lch(99 1 180)">{}</span>',
+    '<span style="color:color(srgb 1 1 1)">{}</span>',
+    '<span style="color:color(srgb 97% 98% 99%)">{}</span>',
+    '<span style="color:color(srgb-linear 1 1 1)">{}</span>',
+    '<span style="color:color(display-p3 1 1 1)">{}</span>',
+    '<span style="color:color(rec2020 1 1 1)">{}</span>',
+    '<span style="color:color(a98-rgb 1 1 1)">{}</span>',
+    '<span style="color:color(prophoto-rgb 1 1 1)">{}</span>',
+    '<span style="color:color(xyz 0.9505 1 1.089)">{}</span>',
+    '<span style="color:color(xyz-d50 0.9642 1 0.8251)">{}</span>',
+    '<div style="background:oklch(0.99 0 0)"><b style="color:#fff">{}</b></div>',
+]
+
+
+@pytest.mark.parametrize("wrapper", CSS4_HIDDEN)
+def test_css4_font_and_color_hiding_variants_are_stripped(wrapper):
+    out = sanitize(f"<body><p>Visible 42</p>{wrapper.format('SECRET PAYLOAD')}</body>")
+    assert "SECRET PAYLOAD" not in out.text and "Visible 42" in out.text
+    assert out.removed
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<p style="font:700 14px/1.4 serif">KEEP</p>',
+        '<p style="font:italic bold 16px Arial, sans-serif">KEEP</p>',
+        '<p style="font:oblique 10deg 300 1.2rem/1.5 serif">KEEP</p>',
+        '<p style="font:caption">KEEP</p>',
+        '<p style="font-size:2svh">KEEP</p>',
+        '<p style="font-size:1.2lh">KEEP</p>',
+        '<p style="margin-left:-0.5cqw">KEEP</p>',
+        '<p style="color:hsl(0 0% 20%)">KEEP</p>',
+        '<p style="color:hsl(60 100% 50%)">KEEP</p>',
+        '<p style="color:hwb(0 50% 0%)">KEEP</p>',
+        '<p style="color:oklch(0.7 0.2 30)">KEEP</p>',
+        '<p style="color:lab(50 40 -20)">KEEP</p>',
+        '<p style="color:color(display-p3 1 0.9 0.9)">KEEP</p>',
+        '<p style="color:oklch(1 0 0);background:oklch(0.2 0 0)">KEEP</p>',
+        '<div style="background:lab(10 0 0)"><b style="color:#fff">KEEP</b></div>',
+        '<div style="background:color(srgb 0 0 0)"><b style="color:white">KEEP</b></div>',
+    ],
+)
+def test_ordinary_css4_values_are_kept(html):
+    assert "KEEP" in sanitize(html).text
