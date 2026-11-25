@@ -1,8 +1,8 @@
 {
  "command": "airgap reproduce",
- "started_utc": "2026-11-25T06:52:09+00:00",
- "finished_utc": "2026-11-25T06:52:10+00:00",
- "seconds": 0.42,
+ "started_utc": "2026-11-25T06:53:53+00:00",
+ "finished_utc": "2026-11-25T06:53:54+00:00",
+ "seconds": 0.44,
  "seed": "none needed (deterministic)",
  "machine": {
   "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
@@ -52,7 +52,7 @@
    "uvicorn": "0.54.0"
   },
   "git": {
-   "commit": "3a28e06eb505c0f8312c1837ddd6f5acca348970",
+   "commit": "f0a4fdfb3b5b1bdd33686ae7d7f81f6c44f9387c",
    "dirty": false
   }
  },
@@ -118,7 +118,7 @@
   },
   {
    "doc": "README.md",
-   "quote": "Adaptive attacks bypassed 12 recent defenses",
+   "quote": "Adaptive attacks bypassed 12 recent jailbreak and prompt-injection defenses",
    "reason": "An external paper (Nasr et al., 2025)."
   },
   {
@@ -160,6 +160,16 @@
    "doc": "docs/architecture.md",
    "quote": "# [('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1",
    "reason": "The output of an illustrative code example. tests/ cover the behavior."
+  },
+  {
+   "doc": "README.md",
+   "quote": "A full re-measure costs about $21.",
+   "reason": "An estimate of future spend, not a recorded result."
+  },
+  {
+   "doc": "README.md",
+   "quote": "the runs used temperature 0.7 and no seed",
+   "reason": "A model setting in src/airgap/models/meta.py, not a result."
   },
   {
    "doc": "PROVENANCE.md",
