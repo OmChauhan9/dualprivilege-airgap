@@ -19,6 +19,7 @@ from math import comb
 from pathlib import Path
 from typing import Any, cast
 
+from airgap.core.airgap import AirgapAgent
 from airgap.eval import adaptive
 from airgap.eval.corpus import DATA_DRIVEN
 from airgap.eval.harness import run_suite
@@ -26,7 +27,7 @@ from airgap.eval.machine import REPO_ROOT, machine
 from airgap.eval.metrics import Rate
 from airgap.models.fake import FakeLLM
 from airgap.server.replay import record_all
-from airgap.world.scenarios import CATALOG
+from airgap.world.scenarios import CATALOG, SCENARIOS
 
 PUBLISHED = Path("results") / "published"
 REPLAY = Path("web") / "public" / "replays" / "fake.json"
@@ -128,6 +129,16 @@ def _errored(t: dict[str, Any]) -> bool:
     return bool(t["error"]) and not t.get("denied", False)
 
 
+def _error_kinds(error: str) -> tuple[str, ...]:
+    """The exception name, and for a refused fetch whether the domain or the status refused it."""
+    kind = error.split(":")[0]
+    if kind != "FetchError":
+        return (kind,)
+    if "not named by the user" in error:
+        return (kind, f"{kind}/unlisted_domain")
+    return (kind, f"{kind}/http" if re.search(r"\bHTTP \d{3}\b", error) else f"{kind}/other")
+
+
 def sign_test(wins: int, losses: int) -> float:
     """Two-sided exact sign test on the cases where the two conditions disagree."""
     n = wins + losses
@@ -159,6 +170,11 @@ def trial_numbers(prefix: str, trials: Trials) -> Numbers:
         sum(r.k for r in paid), sum(r.n for r in paid)
     )
     out[f"{prefix}/every_condition/attacker_paid"] = max(paid, key=lambda r: r.k)
+    flagged = [
+        _rate([t for t in trials if t["condition"] == c and not t["is_attack"]], "hijacked")
+        for c in conds
+    ]
+    out[f"{prefix}/every_condition/benign_flagged"] = max(flagged, key=lambda r: r.k)
     errored = sum(_errored(t) for t in trials)
     out[f"{prefix}/errored_summary"] = f"{errored} runs errored." if errored else "No run errored."
     for cond in conds:
@@ -200,7 +216,7 @@ def trial_numbers(prefix: str, trials: Trials) -> Numbers:
             out[f"{k}category/{cat}/hijacked"] = _rate(
                 [t for t in att if t["category"] == cat], "hijacked"
             )
-        errors = Counter(str(t["error"]).split(":")[0] for t in rows if _errored(t))
+        errors = Counter(k for t in rows if _errored(t) for k in _error_kinds(str(t["error"])))
         for kind, count in errors.items():
             out[f"{k}error/{kind}"] = Rate(count, len(rows))
     for a, c in (("A_no_defense", "C_airgap"), ("B_prompt_defense", "C_airgap")):
@@ -296,11 +312,25 @@ def replay_numbers(replay: dict[str, Any]) -> Numbers:
 
 
 def spend_numbers(logs: dict[str, str]) -> Numbers:
-    """Each log ends with the running spend total, so the largest is the project's total."""
-    spent = [float(m) for text in logs.values() for m in SPEND.findall(text)]
-    if not spent:
+    """The spend ledger is cumulative across runs, so each log's spend line is a running total
+    and the largest is the project's total. The invalid first run is inside that total; without
+    it, what is left is what the published runs cost, so what a full re-measure would cost."""
+
+    def spent(invalid: bool) -> list[float]:
+        return [
+            float(m)
+            for name, text in logs.items()
+            if name.startswith("invalid/") == invalid
+            for m in SPEND.findall(text)
+        ]
+
+    total = max(spent(False), default=None)
+    if total is None:
         raise SetupError(f"no 'recorded real-model spend' line in the logs in {PUBLISHED}")
-    return {"spend/total": f"${max(spent):.2f}"}
+    return {
+        "spend/total": f"${total:.2f}",
+        "spend/published_runs": f"${total - max(spent(True), default=0.0):.0f}",
+    }
 
 
 def _trials(published: dict[str, Any], files: tuple[tuple[str, str | None], ...]) -> Trials:
@@ -310,6 +340,16 @@ def _trials(published: dict[str, Any], files: tuple[tuple[str, str | None], ...]
         for t in published[name]["trials"]
         if only in (None, t["condition"])
     ]
+
+
+def example_numbers() -> Numbers:
+    """The code example in docs/architecture.md, run as written."""
+    sc = SCENARIOS["identity"]
+    model = FakeLLM()
+    agent = AirgapAgent(model, model, sc.make_web("visible_text"), sc.plausible_confirmer())
+    res = agent.run(sc.user_text, sc.context())
+    payments = [(p.payee, p.amount_usd) for p in res.ledger.payments]
+    return {"example/architecture": f"{payments} {res.confirmations}"}
 
 
 def recorded_numbers(published: dict[str, Any], logs: dict[str, str]) -> Numbers:
@@ -341,12 +381,19 @@ class Expected:
 
 
 @dataclass(frozen=True)
+class NotCovered:
+    doc: str
+    quote: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class Inputs:
     published: dict[str, Any]
     replay: Any
     logs: dict[str, str]
     expected: tuple[Expected, ...]
-    not_covered: tuple[dict[str, str], ...]
+    not_covered: tuple[NotCovered, ...]
     docs: dict[str, str]  # whitespace-collapsed, so a quote may span a line break
 
 
@@ -368,31 +415,44 @@ def _json(path: Path) -> Any:
         raise SetupError(f"{path} is not valid JSON: {exc}") from exc
 
 
-def _expected(raw: Any, path: Path) -> tuple[tuple[Expected, ...], tuple[dict[str, str], ...]]:
+def _fields(spec: Any, names: tuple[str, ...]) -> list[str] | None:
+    fields = [spec.get(f) if isinstance(spec, dict) else None for f in names]
+    return cast(list[str], fields) if all(isinstance(v, str) and v for v in fields) else None
+
+
+def _expected(raw: Any, path: Path) -> tuple[tuple[Expected, ...], tuple[NotCovered, ...]]:
     if not isinstance(raw, dict) or not isinstance(raw.get("numbers"), dict):
         raise SetupError(f'{path} must hold {{"numbers": {{id: {{value, doc, quote}}}}}}')
     entries = []
     for number_id, spec in raw["numbers"].items():
-        fields = [
-            spec.get(f) if isinstance(spec, dict) else None for f in ("value", "doc", "quote")
-        ]
-        if not all(isinstance(v, str) and v for v in fields):
+        fields = _fields(spec, ("value", "doc", "quote"))
+        if fields is None:
             raise SetupError(f"{path}: {number_id} needs a value, a doc and a quote")
-        e = Expected(number_id, *cast(list[str], fields))
+        e = Expected(number_id, *fields)
         if e.fmt and e.fmt not in FORMATS:
             raise SetupError(f"{path}: {number_id} names an unknown format {e.fmt!r}")
         if _squash(e.value) not in _squash(e.quote):
             raise SetupError(f"{path}: the value of {number_id} is not inside its quote")
         entries.append(e)
-    return tuple(entries), tuple(raw.get("not_covered", ()))
+    skipped = []
+    for spec in raw.get("not_covered", ()):
+        fields = _fields(spec, ("doc", "quote", "reason"))
+        if fields is None:
+            raise SetupError(f"{path}: each not_covered entry needs a doc, a quote and a reason")
+        skipped.append(NotCovered(*fields))
+    return tuple(entries), tuple(skipped)
 
 
 def load(root: Path) -> Inputs:
     pub = root / PUBLISHED
     published = {name: _json(pub / f"{name}.json") for name in PUBLISHED_FILES}
     expected, not_covered = _expected(_json(root / EXPECTED), root / EXPECTED)
-    docs = {doc: _squash(_read(root / doc)) for doc in sorted({e.doc for e in expected})}
-    logs = {p.name: _read(p) for p in sorted(pub.glob("*.log"))}
+    names = {e.doc for e in expected} | {n.doc for n in not_covered}
+    docs = {doc: _squash(_read(root / doc)) for doc in sorted(names)}
+    logs = {
+        p.relative_to(pub).as_posix(): _read(p)
+        for p in sorted([*pub.glob("*.log"), *pub.glob("invalid/*.log")])
+    }
     return Inputs(published, _json(root / REPLAY), logs, expected, not_covered, docs)
 
 
@@ -503,6 +563,11 @@ def offline_step(inputs: Inputs) -> tuple[list[Check], Numbers]:
         | adaptive_numbers("offline_adaptive_all", [every_payload])
         | replay_numbers(replay)
         | page_numbers()
+        | example_numbers()
+        | {
+            "offline_adaptive/command": f"--rounds {ADAPTIVE_ROUNDS} "
+            f"--scenarios {','.join(ADAPTIVE_SCENARIOS)}"
+        }
     )
     return checks, numbers
 
@@ -530,6 +595,22 @@ def number_check(e: Expected, numbers: Numbers, docs: dict[str, str]) -> Check:
     return Check("numbers", e.id, f"{e.value}  ({e.doc})", listed)
 
 
+def not_covered_check(n: NotCovered, docs: dict[str, str]) -> Check:
+    """A number listed as not covered must still be in its doc, or the list has gone stale."""
+    listed = ()
+    if _squash(n.quote) not in docs[n.doc]:
+        listed = (
+            {
+                "id": n.quote,
+                "expected": n.quote,
+                "derived": None,
+                "doc": n.doc,
+                "reason": "not_covered quote no longer in the doc",
+            },
+        )
+    return Check("not_covered", n.quote, f"({n.doc})", listed)
+
+
 # ---- the command -------------------------------------------------------------------------
 
 
@@ -555,13 +636,36 @@ def _show(c: Check) -> list[str]:
     return lines
 
 
-def run(root: Path = REPO_ROOT, out: Path | None = None) -> int:
+def is_checkout(root: Path) -> bool:
+    return (root / PUBLISHED).is_dir() and (root / "pyproject.toml").is_file()
+
+
+def find_root(start: Path) -> Path | None:
+    """The nearest folder at or above `start` that is a checkout, else the installed one."""
+    for folder in (start, *start.parents):
+        if is_checkout(folder):
+            return folder
+    return REPO_ROOT if is_checkout(REPO_ROOT) else None
+
+
+def run(root: Path | None, out: Path | None = None) -> int:
     started, clock = _now(), time.perf_counter()
+    if root is None or not is_checkout(root):
+        where = "no folder at or above the current one" if root is None else str(root)
+        print(
+            f"setup error: {where} is not a checkout of this repo (it needs {PUBLISHED}/ and "
+            "pyproject.toml). Run from a checkout or pass --root PATH."
+        )
+        return 2
     try:
         inputs = load(root)
         offline, numbers = offline_step(inputs)
         numbers |= recorded_numbers(inputs.published, inputs.logs)
-        checks = offline + [number_check(e, numbers, inputs.docs) for e in inputs.expected]
+        checks = (
+            offline
+            + [number_check(e, numbers, inputs.docs) for e in inputs.expected]
+            + [not_covered_check(n, inputs.docs) for n in inputs.not_covered]
+        )
     except SetupError as exc:
         print(f"setup error: {exc}")
         return 2
@@ -588,16 +692,17 @@ def run(root: Path = REPO_ROOT, out: Path | None = None) -> int:
                 "checks": sum(c.step == step for c in checks),
                 "mismatches": [m for c in failed if c.step == step for m in c.mismatches],
             }
-            for step in ("offline", "numbers")
+            for step in ("offline", "numbers", "not_covered")
         ],
-        "not_covered": list(inputs.not_covered),
+        "not_covered": [asdict(n) for n in inputs.not_covered],
     }
     path = out or default_out(root, (info["git"] or {}).get("commit"))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(record, indent=1) + "\n")
     print(
         f"\nreproduce: {len(checks)} checks, {len(failed)} mismatched, {seconds:.1f} s. "
-        f"{len(inputs.not_covered)} published numbers are listed as not covered in {EXPECTED}. "
+        f"{len(inputs.not_covered)} of them check that a number listed as not covered in "
+        f"{EXPECTED} is still in its doc. "
         f"Record: {path}"
     )
     return 1 if failed else 0

@@ -1470,6 +1470,71 @@
    "value": "{\"k\": 5, \"n\": 37, \"lo\": 0.06, \"hi\": 0.28}",
    "doc": "docs/api-contract.md",
    "quote": "\"data_driven_hijacked\": {\"k\": 5, \"n\": 37, \"lo\": 0.06, \"hi\": 0.28}"
+  },
+  "final_corpus_v2/A_no_defense/benign@frac#shot9": {
+   "value": "78/78",
+   "doc": "docs/demo-script.md",
+   "quote": "then the unguarded and airgap rows with benign completion next to each (78/78), then the strict row (0 hijacked, benign 36/78)"
+  },
+  "final_corpus_v2/C_airgap/benign@frac#shot9": {
+   "value": "78/78",
+   "doc": "docs/demo-script.md",
+   "quote": "then the unguarded and airgap rows with benign completion next to each (78/78), then the strict row (0 hijacked, benign 36/78)"
+  },
+  "final_corpus_v2/C_airgap_strict_confirm/hijacked@k#shot9": {
+   "value": "0",
+   "doc": "docs/demo-script.md",
+   "quote": "then the unguarded and airgap rows with benign completion next to each (78/78), then the strict row (0 hijacked, benign 36/78)"
+  },
+  "final_corpus_v2/C_airgap_strict_confirm/benign@frac#shot9": {
+   "value": "36/78",
+   "doc": "docs/demo-script.md",
+   "quote": "then the unguarded and airgap rows with benign completion next to each (78/78), then the strict row (0 hijacked, benign 36/78)"
+  },
+  "final_corpus_v2/A_no_defense/case/identity:split_notice/hijacked@k#demo": {
+   "value": "1",
+   "doc": "docs/demo-script.md",
+   "quote": "and 1 followed a visible installment notice (`identity:split_notice`)"
+  },
+  "final_corpus_v2/C_airgap_strict_confirm/case/payment:integrity_visible/goal@k": {
+   "value": "3",
+   "doc": "README.md",
+   "quote": "`payment:integrity_visible` adds 3 goal-only runs (a false balance in the reply, no side effect), in strict mode too."
+  },
+  "final_heldout/every_condition/benign_flagged@frac": {
+   "value": "0/15",
+   "doc": "README.md",
+   "quote": "(0/15 benign runs flagged hijacked here, upper bound 20%)"
+  },
+  "final_heldout/every_condition/benign_flagged@hi": {
+   "value": "20%",
+   "doc": "README.md",
+   "quote": "(0/15 benign runs flagged hijacked here, upper bound 20%)"
+  },
+  "real_BC_tuning/C_airgap/error/FetchError/unlisted_domain@k": {
+   "value": "3",
+   "doc": "README.md",
+   "quote": "4 were fetch refusals (3 unlisted domains and 1 HTTP 503)"
+  },
+  "real_BC_tuning/C_airgap/error/FetchError/http@k": {
+   "value": "1",
+   "doc": "README.md",
+   "quote": "4 were fetch refusals (3 unlisted domains and 1 HTTP 503)"
+  },
+  "example/architecture": {
+   "value": "[('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1",
+   "doc": "docs/architecture.md",
+   "quote": "# [('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1"
+  },
+  "spend/published_runs": {
+   "value": "$21",
+   "doc": "README.md",
+   "quote": "A full re-measure costs about $21."
+  },
+  "offline_adaptive/command": {
+   "value": "--rounds 5 --scenarios payment,steering",
+   "doc": "README.md",
+   "quote": "uv run airgap adaptive --provider fake --rounds 5 --scenarios payment,steering --out results/adaptive.json"
   }
  },
  "not_covered": [
@@ -1502,11 +1567,6 @@
    "doc": "README.md",
    "quote": "upper bound about 6-7%",
    "reason": "A range written from two Wilson bounds (0/57 and 0/51). Both k/n are checked."
-  },
-  {
-   "doc": "README.md",
-   "quote": "4 were fetch refusals (3 unlisted domains and 1 HTTP 503)",
-   "reason": "The 4 is checked. The 3 and 1 split would need parsing error text, which is not a recorded field."
   },
   {
    "doc": "README.md",
@@ -1546,27 +1606,22 @@
   {
    "doc": "docs/demo-script.md",
    "quote": "the unguarded pane finishes in about 6 s, the airgapped one in about 12 s",
-   "reason": "Depends on the console player's timing constants in web/src, not on a result file."
+   "reason": "Deriving it needs the console player's timing constants (the dwell per event and the playback speed in web/src), which this Python command does not read."
   },
   {
    "doc": "docs/demo-script.md",
    "quote": "About 10 s.",
-   "reason": "Depends on the console player's timing constants in web/src, not on a result file."
+   "reason": "Deriving it needs the console player's timing constants (the dwell per event and the playback speed in web/src), which this Python command does not read."
+  },
+  {
+   "doc": "docs/demo-script.md",
+   "quote": "33 of its 34 hijacks were page data",
+   "reason": "The difference of two covered numbers: 34 hijacks less the 1 `identity:split_notice` run. Both are checked here too."
   },
   {
    "doc": "docs/adr/0004-report-confirmation-modes-separately.md",
    "quote": "\"0 of 40\" is shown with its upper bound",
    "reason": "An illustrative example, not a result."
-  },
-  {
-   "doc": "docs/architecture.md",
-   "quote": "# [('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1",
-   "reason": "The output of an illustrative code example. tests/ cover the behavior."
-  },
-  {
-   "doc": "README.md",
-   "quote": "A full re-measure costs about $21.",
-   "reason": "An estimate of future spend, not a recorded result."
   },
   {
    "doc": "README.md",

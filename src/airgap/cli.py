@@ -207,7 +207,8 @@ def reproduce_cmd(args: argparse.Namespace) -> None:
 
     from airgap.eval import reproduce
 
-    sys.exit(reproduce.run(out=Path(args.out) if args.out else None))
+    root = Path(args.root) if args.root else reproduce.find_root(Path.cwd())
+    sys.exit(reproduce.run(root, Path(args.out) if args.out else None))
 
 
 def serve(args: argparse.Namespace) -> None:
@@ -296,6 +297,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r.add_argument(
         "--out", default=None, help="machine record (default: results/repro/<date>-<sha>.json)"
+    )
+    r.add_argument(
+        "--root",
+        default=None,
+        help="the checkout to check (default: the nearest folder above with results/published)",
     )
     r.set_defaults(func=reproduce_cmd)
     s = sub.add_parser("serve", help="serve the side-by-side demo console")

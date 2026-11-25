@@ -70,5 +70,9 @@ def machine(root: Path = REPO_ROOT) -> dict[str, Any]:
 
 
 def run_meta() -> dict[str, Any]:
-    """Saved beside paid results, so a later reader knows what produced them."""
-    return machine() | {"saved_utc": datetime.now(UTC).isoformat(timespec="seconds")}
+    """Saved beside paid results, so a later reader knows what produced them. It never raises:
+    a run that was paid for must be written even when the machine details cannot be read."""
+    try:
+        return machine() | {"saved_utc": datetime.now(UTC).isoformat(timespec="seconds")}
+    except Exception as exc:  # noqa: BLE001 - losing a paid run is worse than losing its metadata
+        return {"error": type(exc).__name__}
