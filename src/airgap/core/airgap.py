@@ -92,11 +92,19 @@ class Airgap:
                           address, such as an intranet page ("wiki.corp.internal"). A subdomain
                           of a listed host is not listed.
         """
+        _check_shape("pay", pay, "pay(p: Payment)")
+        _check_shape("send_email", send_email, "send_email(e: Email)")
+        _check_shape("confirm", confirm, "confirm(c: Confirmation)")
         problems = [
             f"{name} is an async function; pass a plain function"
-            for name, fn in (("pay", pay), ("send_email", send_email))
+            for name, fn in (("pay", pay), ("send_email", send_email), ("confirm", confirm))
             if fn is not None and inspect.iscoroutinefunction(fn)
         ]
+        if transport is not None and private_hosts:
+            problems.append(
+                "private_hosts applies only to the guard's own transport; with transport= "
+                "your transport decides where it connects"
+            )
         problems += [
             f"{name} must be a positive finite number"
             for name, v in (("per_payment_usd", per_payment_usd), ("per_run_usd", per_run_usd))
@@ -130,7 +138,14 @@ class Airgap:
         sees, and the only source of typed addresses (P1), the stated cap (P2) and named URLs (P5).
 
         `run_id` seeds each call's idempotency key (`Payment.key`). Pass a stable id, such as the
-        message id, and a repeated run sends the same keys. Default: a new random id.
+        message id, and a repeated run sends the same key for the same payment or email. Default:
+        a new random id.
+
+        Limits are per run. An approved amount stays counted against `per_run_usd` even when your
+        function declines it or its outcome is unknown. A callback (pay, send_email, confirm,
+        on_event) that calls `run` again on the same thread or asyncio task is refused; one that
+        starts another thread and calls the guard there is not detected, and gets fresh limits,
+        so a callback must never call the guard from another thread.
 
         `on_event` receives every audit event as it happens. The approved `policy` event comes
         just before your function runs. If `on_event` raises, the run stops there and the result
@@ -160,6 +175,28 @@ class Airgap:
             session_limit_usd=self._per_run,
             tools=frozenset(tools),
         )
+
+
+def _check_shape(name: str, fn: Callable[..., object] | None, shape: str) -> None:
+    """A function the guard calls must take exactly one positional argument."""
+    if fn is None:
+        return
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):  # a builtin with no signature: trust it
+        return
+    try:
+        sig.bind(None)
+        takes_one = True
+    except TypeError:
+        takes_one = False
+    try:
+        sig.bind(None, None)
+        takes_two = True
+    except TypeError:
+        takes_two = False
+    if not takes_one or takes_two:
+        raise TypeError(f"{name} must take exactly one positional argument: {shape}, got {sig}")
 
 
 def run_ablated(

@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 from collections.abc import Callable, Sequence
-from dataclasses import astuple, dataclass, field, replace
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from airgap.core.audit import AuditLog
@@ -23,8 +23,9 @@ class Payment:
     `amount_usd` is a whole number of cents: the guard rounds it half-up before P2 checks it, so
     the amount approved is the amount charged. `Decimal(str(p.amount_usd))` is exact.
     `key` is an idempotency key: pass it to your payment provider so a retry cannot pay twice. It
-    is derived from the run id, the call and how many identical calls the run made before, so a
-    run repeated with the same `run_id` sends the same keys. It is not part of equality.
+    is derived from the run id, the payee, the cent amount and the memo, and how many identical
+    payments the run attempted before. It is stable only for the same payment under the same
+    `run_id`: a run repeated with that `run_id` sends the same key for it. Not part of equality.
     """
 
     payee: str
@@ -35,7 +36,8 @@ class Payment:
 
 @dataclass(frozen=True)
 class Email:
-    """One call to `send_email`, exactly as the function receives it. `key` as in `Payment`."""
+    """One call to `send_email`, exactly as the function receives it. `key` as in `Payment`,
+    derived from the recipient and the subject."""
 
     to: str
     subject: str
@@ -124,9 +126,16 @@ class OutcomeUnknown(RuntimeError):
     """Raised by the interpreter after an unknown-outcome call, so nothing later runs."""
 
 
+def _identity(call: Call) -> tuple[str, ...]:
+    """What makes two effects the same one: the kind, the payee or recipient, the cent amount,
+    and the memo or subject. Never a plan step position, so a re-planned retry matches."""
+    if isinstance(call, Payment):
+        return ("pay", call.payee, f"{call.amount_usd:.2f}", call.memo)
+    return ("send_email", call.to.lower(), call.subject)
+
+
 def effect_key(run_id: str, call: Call, occurrence: int) -> str:
-    fields = astuple(replace(call, key=""))[:-1]
-    material = "\x1f".join([run_id, kind_of(call), *map(str, fields), str(occurrence)])
+    material = "\x1f".join([run_id, *_identity(call), str(occurrence)])
     return "ag-" + hashlib.sha256(material.encode()).hexdigest()[:32]
 
 
@@ -142,7 +151,7 @@ class Effects:
     audit: AuditLog
     run_id: str
     actions: list[Action] = field(default_factory=list)
-    _attempts: dict[Call, int] = field(default_factory=dict)
+    _attempts: dict[tuple[str, ...], int] = field(default_factory=dict)
 
     @property
     def kinds(self) -> frozenset[Kind]:
@@ -155,7 +164,8 @@ class Effects:
 
     def keyed(self, call: Call) -> Call:
         """The call with its idempotency key. Identical calls already attempted this run count."""
-        return replace(call, key=effect_key(self.run_id, call, self._attempts.get(call, 0)))
+        seen = self._attempts.get(_identity(call), 0)
+        return replace(call, key=effect_key(self.run_id, call, seen))
 
     def call(self, call: Call, *, confirmed: bool) -> Action:
         """Call the matching function exactly once, record the Action, and return it.
@@ -163,7 +173,7 @@ class Effects:
         Never retries: a retry after an unknown outcome could pay twice. A BaseException
         (KeyboardInterrupt) is recorded as unknown first and then re-raised.
         """
-        self._attempts[call] = self._attempts.get(call, 0) + 1
+        self._attempts[_identity(call)] = self._attempts.get(_identity(call), 0) + 1
         try:
             if isinstance(call, Payment):
                 assert self.pay is not None, "P0 refuses a payment without a pay function"
