@@ -504,11 +504,93 @@ def test_the_success_path_emits_no_new_event_kind():
     assert {e.kind for e in res.audit.events} <= today | {"answer", "error"}
 
 
-def test_runs_on_other_threads_are_not_refused_as_nested():
-    sc = SCENARIOS["identity"]
-    g = sc.guard(FakeLLM(), sc.make_web(None), WorldTools())
-    out: list[RunResult] = []
-    t = threading.Thread(target=lambda: out.append(g.run(sc.user_text)))
-    t.start()
-    t.join()
-    assert out[0].error is None
+# ---- decisions made during the build -------------------------------------------------------
+
+
+def test_D13_a_run_started_on_another_thread_is_not_seen_so_limits_stay_per_run():
+    # Documented: a callback must not call the guard from another thread. The ContextVar guard
+    # covers the same thread and asyncio tasks only, and each run keeps its own limits.
+    holder: dict[str, Airgap] = {}
+    inner: list[RunResult] = []
+
+    started: list[bool] = []
+
+    def pay_then_rerun(p: Payment) -> object:
+        if not started:
+            started.append(True)
+            t = threading.Thread(target=lambda: inner.append(holder["g"].run("pay acme 100")))
+            t.start()
+            t.join()
+        return "ok"
+
+    holder["g"] = g = Airgap(
+        planner=Planner(pay(100), ANSWER), pay=pay_then_rerun, payees={"acme": WALLET}
+    )
+    outer = g.run("pay acme 100")
+    assert [a.outcome for a in outer.actions] == ["done"]
+    assert [a.outcome for a in inner[0].actions] == ["done"]
+
+
+@pytest.mark.parametrize(
+    "kw,shape",
+    [
+        ({"pay": lambda payee, amount_usd, memo: None}, "pay(p: Payment)"),
+        ({"pay": lambda payee, amount_usd=0.0, memo="": None}, "pay(p: Payment)"),
+        ({"send_email": lambda: None}, "send_email(e: Email)"),
+        ({"confirm": lambda kind, args, decision: True}, "confirm(c: Confirmation)"),
+    ],
+)
+def test_an_old_style_function_is_refused_when_the_guard_is_built(kw, shape):
+    with pytest.raises(TypeError, match=re.escape(shape)):
+        Airgap(planner=FakeLLM(), **kw)
+
+
+def test_the_key_depends_on_the_payment_not_on_its_place_in_the_plan():
+    first, retry = Bank(), Bank()
+    guard(Planner(pay(10), ANSWER), first).run("pay acme 10", run_id="msg-7")
+    guard(Planner(EMAIL, pay(10), ANSWER), retry).run("pay acme 10", run_id="msg-7")
+    assert first.calls[0].key == retry.calls[0].key
+    guard(Planner(pay(11), ANSWER), retry).run("pay acme 11", run_id="msg-7")
+    assert retry.calls[-1].key != first.calls[0].key
+
+
+def test_a_declined_amount_stays_counted_against_the_run_limit():
+    class Strict(Bank):
+        def pay(self, p: Payment) -> object:
+            self.calls.append(p)
+            if len(self.calls) == 1:
+                raise Declined("no")
+            return "ok"
+
+    bank = Strict()
+    res = guard(Planner(pay(100), pay(100), ANSWER), bank, per_run_usd=150).run("pay acme twice")
+    assert len(bank.calls) == 1
+    assert any("session spend limit" in b for b in res.blocked)
+
+
+def test_D14_the_dialog_the_policy_and_the_function_see_the_same_cent_amount():
+    page = "<p>Amount due: $99.995</p><p>Billing period: monthly</p>"
+    seen: list[Confirmation] = []
+
+    def confirm(c: Confirmation) -> bool:
+        seen.append(c)
+        return True
+
+    bank = Bank()
+    g = guard(
+        Planner(*FETCH_AND_PAY), bank, web=bill_web(page), per_payment_usd=150, confirm=confirm
+    )
+    g.run(f"pay acme {BILL}")
+    assert [c.call.amount_usd for c in seen] == [100.0]  # type: ignore[union-attr]
+    assert [p.amount_usd for p in bank.calls] == [100.0]
+
+
+def test_private_hosts_with_a_transport_is_refused():
+    with pytest.raises(ValueError, match="private_hosts"):
+        Airgap(planner=FakeLLM(), transport=MockWeb().transport(), private_hosts={"wiki.test"})
+
+
+def test_the_package_docstring_shows_no_client_keyword():
+    import airgap
+
+    assert "Client" not in (airgap.__doc__ or "") and "http=" not in (airgap.__doc__ or "")
