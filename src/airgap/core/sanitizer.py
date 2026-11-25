@@ -93,10 +93,11 @@ def _declarations(tag: Tag) -> Declarations:
     for attr, prop in _PRESENTATION.items():
         value = tag.get(attr)
         if isinstance(value, str):
-            decls.setdefault(prop, []).append(value.strip().lower())
+            decls.setdefault(prop, []).append(" ".join(_COMMENT.sub(" ", value).split()).lower())
     style = tag.get("style")
     if isinstance(style, str):
-        css = _unescape(_COMMENT.sub("", style))
+        # A comment separates tokens, so `700/**/1px` is two tokens, never `7001px`.
+        css = _unescape(_COMMENT.sub(" ", style))
         for part in css.split(";"):
             prop, sep, value = part.partition(":")
             if sep:
