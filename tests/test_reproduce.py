@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from airgap import cli
-from airgap.eval import adaptive, harness, reproduce
+from airgap.eval import adaptive, harness, machine, reproduce
 from airgap.models.budget import BudgetedModel
 from airgap.models.fake import FakeLLM
 from airgap.models.meta import MetaModel
@@ -54,7 +54,7 @@ def _copy_repo(tmp_path: Path) -> Path:
     replays = root / "web" / "public" / "replays"
     replays.mkdir(parents=True)
     shutil.copy(ROOT / "web" / "public" / "replays" / "fake.json", replays)
-    for name in ("README.md", "THREAT_MODEL.md", "uv.lock"):
+    for name in ("README.md", "THREAT_MODEL.md", "PROVENANCE.md", "pyproject.toml", "uv.lock"):
         shutil.copy(ROOT / name, root)
     return root
 
@@ -78,7 +78,7 @@ def test_the_machine_record_has_every_field(repo_run):
     assert record["machine"]["packages"]["pytest"]
     assert record["seed"] == "none needed (deterministic)"
     assert record["started_utc"] <= record["finished_utc"]
-    assert {s["name"] for s in record["steps"]} == {"offline", "numbers"}
+    assert {s["name"] for s in record["steps"]} == {"offline", "numbers", "not_covered"}
     assert all({"name", "checks", "mismatches"} <= set(s) for s in record["steps"])
 
 
@@ -111,6 +111,32 @@ def test_a_changed_number_in_a_doc_exits_one(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "final_corpus_v2/C_airgap/hijacked@ci" in out
     assert "README.md" in out
+
+
+def test_a_stale_not_covered_quote_exits_one(tmp_path, capsys):
+    root = _copy_repo(tmp_path)
+    readme = root / "README.md"
+    text = readme.read_text()
+    assert "Run the demo in 60 seconds" in text
+    readme.write_text(text.replace("Run the demo in 60 seconds", "Run the demo in 90 seconds"))
+
+    assert reproduce.run(root, tmp_path / "record.json") == 1
+    out = capsys.readouterr().out
+    assert "Run the demo in 60 seconds" in out
+    assert "README.md" in out
+
+
+def test_reproduce_finds_the_checkout_from_a_subdirectory(monkeypatch):
+    monkeypatch.chdir(ROOT / "docs" / "adr")
+    assert reproduce.find_root(Path.cwd()) == ROOT
+
+
+def test_a_root_that_is_not_a_checkout_exits_two(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["reproduce", "--root", str(tmp_path), "--out", str(tmp_path / "r.json")])
+    assert exc.value.code == 2
+    assert "not a checkout" in capsys.readouterr().out
+    assert not (tmp_path / "r.json").exists()
 
 
 def test_a_missing_file_exits_two(tmp_path, capsys):
@@ -155,3 +181,30 @@ def test_adaptive_save_adds_run_meta_and_keeps_every_old_field(tmp_path):
     assert saved["kind"] == "adaptive" and saved["rounds"] == 1
     assert saved["attempts"] == json.loads(json.dumps([a.record() for a in attempts]))
     assert MACHINE_FIELDS <= set(saved["run_meta"])
+
+
+def _broken_machine(*_args, **_kwargs):
+    raise machine.metadata.PackageNotFoundError("dualprivilege-airgap")
+
+
+def test_eval_save_still_writes_the_results_when_machine_details_fail(tmp_path, monkeypatch):
+    monkeypatch.setattr(machine, "machine", _broken_machine)
+    trials = harness.run_suite(FakeLLM(), 1, split="heldout", only=("C_airgap",))
+    path = tmp_path / "eval.json"
+    harness.save(trials, path, model_name="fake-llm")
+
+    saved = json.loads(path.read_text())
+    assert saved["model"] == "fake-llm"
+    assert saved["trials"] == json.loads(json.dumps([asdict(t) for t in trials]))
+    assert saved["run_meta"] == {"error": "PackageNotFoundError"}
+
+
+def test_adaptive_save_still_writes_the_results_when_machine_details_fail(tmp_path, monkeypatch):
+    monkeypatch.setattr(machine, "machine", _broken_machine)
+    attempts = adaptive.run_adaptive(adaptive.FakeAttacker(), FakeLLM(), ("payment",), 1)
+    path = tmp_path / "adaptive.json"
+    adaptive.save(attempts, path, "fake-attacker", "fake-llm", 1, ("payment",))
+
+    saved = json.loads(path.read_text())
+    assert saved["attempts"] == json.loads(json.dumps([a.record() for a in attempts]))
+    assert saved["run_meta"] == {"error": "PackageNotFoundError"}
