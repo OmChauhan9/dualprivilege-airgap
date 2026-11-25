@@ -57,17 +57,18 @@ _CAP_RE = re.compile(
 
 
 # An address counts only as a word of its own: split on plain spaces, tabs and line breaks, with
-# nothing around it but quotes, brackets or sentence punctuation. Glued to a link character
-# (`/ ? = & @ : # %`), another word or an unusual space such as U+00A0, it is part of something
-# else, often a pasted link that carries a wallet the user never meant to name. A rule on the word
-# itself, not a link pattern, so no spelling of a link (`my_shop.test/`, `user:0x...@host`,
-# `data:`) needs to be listed.
+# nothing around it but quotes, brackets, sentence punctuation or a dash joining a plain word
+# ("0x...—thanks"). Glued to a link character (`/ ? = & @ : # %`), an ASCII hyphen (a host
+# character), another word or an unusual space such as U+00A0, it is part of something else, often
+# a pasted link that carries a wallet the user never meant to name. A rule on the word itself, not
+# a link pattern, so no spelling of a link (`my_shop.test/`, `user:0x...@host`, `data:`) needs to be
+# listed.
 _WORD_SEP_RE = re.compile(r"[ \t\r\n]+")
 _ADDRESS_WORD_RE = re.compile(
-    r"[(\[{<\"'`*\u201c\u2018\u00ab\u300c\u300e\uff08]*"
+    r"(?:[(\[{<\"'`*\u201c\u2018\u00ab\u300c\u300e\uff08\u2013\u2014]|[^\W_]+[\u2013\u2014])*"
     r"(0x[0-9a-fA-F]{6,})"
-    r"[)\]}>\"'`*\u201d\u2019\u00bb\u300d\u300f\uff09"
-    r".,;:!?\u2026\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f]*"
+    r"(?:[)\]}>\"'`*\u201d\u2019\u00bb\u300d\u300f\uff09.,;:!?\u2013\u2014\u2026"
+    r"\u3002\uff0c\u3001\uff1b\uff1a\uff01\uff1f]|[\u2013\u2014][^\W_]+)*"
 )
 
 

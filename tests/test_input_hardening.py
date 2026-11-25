@@ -164,6 +164,8 @@ def test_address_the_user_typed_outside_a_link_still_counts(text):
         "a:0xdeadbeef0011",
         "0xdeadbeef0011-pay.test/r",  # an ASCII hyphen is a host character, unlike a dash
         "pay-0xdeadbeef0011",
+        "0xdeadbeef0011—pay.test/r",
+        "shop.test/?to=—0xdeadbeef0011",
     ],
 )
 def test_address_glued_to_link_characters_is_not_a_user_address(lure):
