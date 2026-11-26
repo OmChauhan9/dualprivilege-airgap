@@ -80,6 +80,7 @@ source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "fastapi" },
+    { name = "httpcore" },
     { name = "httpx" },
     { name = "lxml" },
     { name = "openai" },
@@ -99,6 +100,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpcore", specifier = ">=1.0,<2" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "lxml", specifier = ">=5.2" },
     { name = "openai", specifier = ">=1.50" },

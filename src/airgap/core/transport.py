@@ -5,7 +5,7 @@ the first request and every redirect hop alike. There is no separate check that 
 change after (rebinding). TLS still verifies the host name: httpcore passes the origin's name as
 SNI, while the TCP connection goes to the checked address.
 
-Built on the public APIs of httpcore, which httpx requires and pins; no package is added.
+Built on the public APIs of httpcore, declared in pyproject at the same major version httpx pins.
 """
 
 from __future__ import annotations
