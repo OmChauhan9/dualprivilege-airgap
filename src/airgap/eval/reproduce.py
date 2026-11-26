@@ -314,7 +314,7 @@ def replay_numbers(replay: dict[str, Any]) -> Numbers:
 def spend_numbers(logs: dict[str, str]) -> Numbers:
     """The spend ledger is cumulative across runs, so each log's spend line is a running total
     and the largest is the project's total. The invalid first run is inside that total; without
-    it, what is left is what the published runs cost, so what a full re-measure would cost."""
+    it, what is left is what all published runs cost together, superseded tuning runs included."""
 
     def spent(invalid: bool) -> list[float]:
         return [

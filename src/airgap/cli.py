@@ -291,7 +291,9 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--out", default="results/adaptive.json")
     a.set_defaults(func=run_adaptive_cmd)
     r = sub.add_parser(
-        "reproduce", help="re-check every published number offline, with no model calls"
+        "reproduce",
+        help="re-check offline, with no model calls, the offline runs, the real-model data and "
+        "the numbers quoted in README, THREAT_MODEL.md and docs/",
     )
     r.add_argument(
         "--out", default=None, help="machine record (default: results/repro/<date>-<sha>.json)"
