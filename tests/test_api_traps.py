@@ -256,3 +256,26 @@ def test_a_plan_with_no_steps_says_so_in_the_summary():
     res = Airgap(planner=Scripted(steps())).run("Pay my landlord the rent")
     assert res.error is None
     assert "the planner made no plan steps" in res.summary
+
+
+def test_refusing_a_subdomain_warns_that_its_registrable_domain_covers_every_tenant():
+    with pytest.raises(ValueError, match=r"'alice\.github\.io'.*every host under 'github\.io'"):
+        Airgap(planner=FakeLLM(), domains=["alice.github.io"])
+
+
+class _Says:
+    name = "says"
+
+    def complete(self, messages: Any, *, role: Any, schema: Any = None) -> Any:
+        return '{"steps": []}'
+
+
+def test_a_planner_that_returns_a_str_is_named_with_the_type_it_must_return():
+    with pytest.raises(TypeError, match=r"planner.*must return.*Completion.*str"):
+        Airgap(planner=_Says()).run("pay my bill")
+
+
+@pytest.mark.parametrize("run_id", [5, b"id", ""])
+def test_a_run_id_that_is_not_a_non_empty_str_is_refused_naming_run_id(run_id):
+    with pytest.raises(TypeError, match="run_id"):
+        Airgap(planner=FakeLLM()).run("pay my bill", run_id=run_id)
