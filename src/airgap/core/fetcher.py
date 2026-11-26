@@ -39,11 +39,12 @@ class FetchError(RuntimeError):
 
 class AddressRefused(FetchError):
     """A host resolved to a non-public address; raised by the guard's transport at connect time.
-    `host` passed P5, so naming it quotes no page text."""
+    A redirect hop's host can be one the page chose, so `host` names it only when it is a
+    well-formed host name."""
 
     def __init__(self, host: str) -> None:
-        super().__init__(f"{host} resolves to a non-public address")
-        self.host = host
+        self.host = host if is_hostname(host) else "a host that is not a valid name"
+        super().__init__(f"{self.host} resolves to a non-public address")
 
 
 # Called with (the URL that redirected, the redirect target) before the target is requested;
@@ -414,7 +415,6 @@ class Fetcher:
     def _send(self, url: str, deadline: float) -> httpx.Response:
         """One request. Every failure becomes a code-written FetchError; the original exception,
         whose text may quote a Location header or the body, stays chained for a debugger."""
-        _unambiguous(url)
         left = deadline - time.monotonic()
         if left <= 0:
             raise FetchError(_TOO_SLOW)
@@ -440,6 +440,7 @@ class Fetcher:
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise FetchError(f"unsupported url: {url}")
+        _unambiguous(url)
         deadline = time.monotonic() + FETCH_DEADLINE_S
         visited: list[httpx.Response] = []
         current = url
@@ -457,6 +458,7 @@ class Fetcher:
                 raise FetchError("the server sent a malformed response") from exc
             if scheme not in ("http", "https"):
                 raise FetchError("redirect to a url that is not http or https")
+            _unambiguous(current)  # before P5 reads the host, so P5 never quotes a malformed one
             if check_hop is not None:
                 check_hop(prev, current)
         else:

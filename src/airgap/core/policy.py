@@ -255,7 +255,8 @@ class PolicyEngine:
             return Decision("deny", ("P5",), "the address has an invalid port")
         scheme, host, port = origin
         if port != _DEFAULT_PORTS.get(scheme) and origin not in self.ctx.named_origins:
-            return Decision("deny", ("P5",), f"port {port} on {host} was not named by the user")
+            where = host if is_hostname(host) else "a host that is not a valid name"
+            return Decision("deny", ("P5",), f"port {port} on {where} was not named by the user")
         if came_from is not None and urlsplit(came_from).scheme == "https" and scheme == "http":
             return Decision("deny", ("P5",), "a redirect from https to http")
         return ALLOW
