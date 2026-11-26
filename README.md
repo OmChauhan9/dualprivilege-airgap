@@ -31,7 +31,7 @@ guard = Airgap(
     planner=FakeLLM(),
     pay=pay,
     payees={"landlord": "0x1ED6E4000000000000000000000000000000AA01"},
-    confirm=lambda c: True,                 # asked because the amount came from a page
+    confirm=lambda c: c.call.amount_usd <= 50,  # asked because the amount came from a page
     transport=web.transport(),              # offline only; leave it out to fetch the real web
 )
 result = guard.run("Pay my landlord the invoice at https://rent.example.test/due")

@@ -302,7 +302,8 @@ Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
   provenance ([ADR 0003](docs/adr/0003-in-process-mock-web.md)).
 - **A transport the developer passes is trusted.** `Airgap(transport=...)` replaces the guard's
   public-address transport. The guard then does not check where it connects, and it relies on the
-  transport to send one request per call and never follow redirects itself.
+  transport to send one request per call and never follow redirects itself. It must also enforce
+  the 20 s fetch limit itself: the guard can only give each socket operation the time left.
 - **Callbacks on another thread.** A callback that starts a thread and calls the guard from there
   is not detected. That nested run gets its own limits. Limits are per run, and nothing bounds
   spend across runs.
