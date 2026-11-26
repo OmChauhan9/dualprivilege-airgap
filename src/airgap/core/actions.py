@@ -36,8 +36,9 @@ class Payment:
 
 @dataclass(frozen=True)
 class Email:
-    """One call to `send_email`, exactly as the function receives it. `key` as in `Payment`,
-    derived from the recipient and the subject."""
+    """One call to `send_email`, exactly as the function receives it. `to` is the entry of
+    `email_recipients` the recipient matched. `key` as in `Payment`, derived from the recipient,
+    the subject and the body."""
 
     to: str
     subject: str
@@ -127,11 +128,11 @@ class OutcomeUnknown(RuntimeError):
 
 
 def _identity(call: Call) -> tuple[str, ...]:
-    """What makes two effects the same one: the kind, the payee or recipient, the cent amount,
-    and the memo or subject. Never a plan step position, so a re-planned retry matches."""
+    """What makes two effects the same one: the kind, then the payee, cent amount and memo, or
+    the recipient, subject and body. Never a plan step position, so a re-planned retry matches."""
     if isinstance(call, Payment):
         return ("pay", call.payee, f"{call.amount_usd:.2f}", call.memo)
-    return ("send_email", call.to.lower(), call.subject)
+    return ("send_email", call.to.lower(), call.subject, call.body)
 
 
 def effect_key(run_id: str, call: Call, occurrence: int) -> str:

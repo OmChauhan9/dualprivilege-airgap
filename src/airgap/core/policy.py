@@ -23,6 +23,7 @@ from __future__ import annotations
 import ipaddress
 import math
 import re
+import string
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -74,7 +75,8 @@ class Confirmation:
     call: Call  # the Payment or Email your function receives if you approve
     rules: tuple[str, ...]  # ("P4",) an amount read from a page, ("P6",) a choice made by page data
     reason: str
-    amount_read_from: tuple[str, ...] = ()  # the sites the amount or the choice came from
+    # The sites the amount was read from and the sites whose values chose the payee or recipient.
+    amount_read_from: tuple[str, ...] = ()
     stated_cap_usd: float | None = None  # the cap the user wrote in the request, if any
 
 
@@ -90,6 +92,7 @@ class Decision:
     verdict: Verdict
     rules: tuple[str, ...] = ()
     reason: str = ""
+    read_from: frozenset[str] = frozenset()  # a confirm verdict: the sources behind it
 
 
 ALLOW = Decision("allow")
@@ -121,6 +124,7 @@ _CAP_RE = re.compile(
 # listed.
 # The address form P1 recognises. `Airgap(payees=...)` must use it too.
 ADDRESS_RE = re.compile(r"0x[0-9a-fA-F]{6,}")
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 _WORD_SEP_RE = re.compile(r"[ \t\r\n]+")
 _ADDRESS_WORD_RE = re.compile(
     r"(?:[(\[{<\"'`*\u201c\u2018\u00ab\u300c\u300e\uff08\u2013\u2014]|[^\W_]+[\u2013\u2014])*"
@@ -139,6 +143,17 @@ class UserContext:
     per_tx_limit_usd: float = 100.0
     session_limit_usd: float = 200.0
     tools: frozenset[Kind] = frozenset({"pay", "send_email"})  # P0: the functions given
+
+    def listed_recipient(self, address: str) -> str | None:
+        """The allowlist entry `address` names, compared ignoring ASCII case only, or None.
+
+        Unicode case folding is not used: `str.lower()` folds the Kelvin sign to "k", so a
+        look-alike would match an entry while naming a different mailbox.
+        """
+        key = address.translate(_ASCII_LOWER)
+        return min(
+            (e for e in self.email_allowlist if e.translate(_ASCII_LOWER) == key), default=None
+        )
 
     @property
     def sensitive(self) -> bool:
@@ -304,7 +319,10 @@ class PolicyEngine:
         if payee.is_steered or amount.is_steered:
             rules.append("P6")
         if rules and self.untrusted_seen:
-            return Decision("confirm", tuple(rules), "value chosen or supplied by untrusted data")
+            read_from = amount.sources | amount.steered_by | payee.steered_by
+            return Decision(
+                "confirm", tuple(rules), "value chosen or supplied by untrusted data", read_from
+            )
         return ALLOW
 
     def check_email(self, to: Tainted, subject: Tainted, body: Tainted) -> Decision:
@@ -312,10 +330,10 @@ class PolicyEngine:
             return Decision("deny", ("P0",), "no send_email function was given to the guard")
         if to.is_tainted or subject.is_tainted or body.is_tainted:
             return Decision("deny", ("P4",), "email field derived from untrusted content")
-        if str(to.value).lower() not in {e.lower() for e in self.ctx.email_allowlist}:
+        if self.ctx.listed_recipient(str(to.value)) is None:
             return Decision("deny", ("P3",), f"recipient {to.value} is not on the allowlist")
         if to.is_steered and self.untrusted_seen:
-            return Decision("confirm", ("P6",), "recipient chosen by untrusted data")
+            return Decision("confirm", ("P6",), "recipient chosen by untrusted data", to.steered_by)
         return ALLOW
 
     # ---- enforcement --------------------------------------------------------------------
@@ -366,7 +384,7 @@ class PolicyEngine:
             decision.rules,
             decision.reason,
             amount_read_from=tuple(
-                s.removeprefix("untrusted:") for s in args.get("amount_sources", ())
+                sorted(s.removeprefix("untrusted:") for s in decision.read_from)
             ),
             stated_cap_usd=args.get("stated_cap_usd"),
         )
