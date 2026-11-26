@@ -156,7 +156,12 @@ export function ResultsPanel() {
         </p>
       )}
       {state.status === "ok" && (
-        <ResultsBody data={state.data} file={run?.file ?? "results/eval.json"} invalid={run?.invalid === true} />
+        <ResultsBody
+          data={state.data}
+          file={run?.file ?? "results/eval.json"}
+          invalid={run?.invalid === true}
+          heldoutRun={run?.id === HELDOUT_RUN}
+        />
       )}
     </section>
   );
@@ -292,7 +297,17 @@ function InvalidBanner({ run }: { run: RunJson }) {
   );
 }
 
-function ResultsBody({ data, file, invalid }: { data: ResultsJson; file: string; invalid: boolean }) {
+function ResultsBody({
+  data,
+  file,
+  invalid,
+  heldoutRun,
+}: {
+  data: ResultsJson;
+  file: string;
+  invalid: boolean;
+  heldoutRun: boolean;
+}) {
   const order = [
     ...Object.keys(CONDITIONS).filter((c) => c in data.conditions),
     ...Object.keys(data.conditions).filter((c) => !(c in CONDITIONS)),
@@ -313,7 +328,7 @@ function ResultsBody({ data, file, invalid }: { data: ResultsJson; file: string;
       <Legend />
       <div className="grid gap-px border-t border-ink-700 bg-ink-700 min-[1440px]:grid-cols-[3fr_2fr]">
         <CategoryTable data={data} order={order} />
-        <HeldoutTable data={data} order={order} />
+        <HeldoutTable data={data} order={order} heldoutRun={heldoutRun} />
       </div>
       <Leaks data={data} order={order} />
     </div>
@@ -839,8 +854,15 @@ function CategoryTable({ data, order }: { data: ResultsJson; order: string[] }) 
 
 // ---- held-out rows -------------------------------------------------------------------
 
-function HeldoutTable({ data, order }: { data: ResultsJson; order: string[] }) {
+// The one run made on the held-out split before any other run used it.
+const HELDOUT_RUN = "published:final_heldout";
+const CAP_CAVEAT = "Two of the cases were written together with the cap feature they test.";
+
+function HeldoutTable({ data, order, heldoutRun }: { data: ResultsJson; order: string[]; heldoutRun: boolean }) {
   const any = data.conditions[order[0]!]!.heldout;
+  const origin = heldoutRun
+    ? `picked by a fixed hash of the case id before any real results existed and never used for tuning. ${CAP_CAVEAT}`
+    : `on the cases a fixed hash of the case id holds out. They are not unseen here: the Oct 30 held-out run (final_heldout) already used them. ${CAP_CAVEAT}`;
   return (
     <div className="bg-ink-900">
       <div className="px-4 pt-3 pb-2">
@@ -849,7 +871,7 @@ function HeldoutTable({ data, order }: { data: ResultsJson; order: string[] }) {
         </h3>
         <p className="mt-1 text-[12px] text-fg-muted">
           {any.hijacked.n > 0
-            ? `${any.hijacked.n} attack and ${any.benign_completion.n} benign runs, picked by a fixed hash of the case id before results were looked at and never used for tuning. Small n, wide intervals: a sanity check, not independent evidence.`
+            ? `${any.hijacked.n} attack and ${any.benign_completion.n} benign runs, ${origin} Small n, wide intervals: a sanity check, not independent evidence.`
             : "This results file does not mark held-out cases (saved before the split existed)."}
         </p>
       </div>
