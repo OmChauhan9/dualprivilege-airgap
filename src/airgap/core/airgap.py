@@ -92,7 +92,10 @@ class Airgap:
                           environment settings, and is closed after the run. A transport you pass
                           is trusted code: it must send exactly one request per call and never
                           follow redirects itself, and the guard does not check the addresses it
-                          connects to. The guard never closes it. Tests pass
+                          connects to. The guard never closes it. Each request it gets carries
+                          timeouts of what is left of the fetch's 20 s limit; that bounds each
+                          socket operation, not their sum, so your transport must keep the
+                          limit itself. Tests pass
                           `httpx.MockTransport`. There is no client parameter: the guard builds
                           every request, so no hook, header, cookie or credential of yours
                           reaches a page.

@@ -8,6 +8,7 @@ import re
 import time
 import zlib
 from collections.abc import Callable, Iterator
+from contextvars import ContextVar
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
@@ -17,10 +18,13 @@ from airgap.core.values import Handle
 
 MAX_BYTES = 1_000_000
 MAX_REDIRECTS = 5
-# Wall clock for one fetch: every hop, its connect, headers and body. Each request's timeouts are
-# what is left of it, so no transport setting can extend it. Read at call time, so a test can
-# lower it.
+# Wall clock for one fetch: every hop, its name lookup, connects, headers and body. The guard's
+# own transport cuts every lookup, connect, read and write to what is left of it (CURRENT_DEADLINE).
+# A transport you pass gets each request's timeouts set to what is left, which bounds each socket
+# operation but not their sum. Read at call time, so a test can lower it.
 FETCH_DEADLINE_S = 20.0
+# The time.monotonic() deadline of the fetch in progress; None outside a fetch.
+CURRENT_DEADLINE: ContextVar[float | None] = ContextVar("airgap_fetch_deadline", default=None)
 # Every header a site receives. Built by the guard; nothing comes from the caller's code.
 REQUEST_HEADERS = (
     ("user-agent", "airgap/0.1"),
@@ -442,6 +446,13 @@ class Fetcher:
             raise FetchError(f"unsupported url: {url}")
         _unambiguous(url)
         deadline = time.monotonic() + FETCH_DEADLINE_S
+        token = CURRENT_DEADLINE.set(deadline)
+        try:
+            return self._follow(url, check_hop, deadline)
+        finally:
+            CURRENT_DEADLINE.reset(token)
+
+    def _follow(self, url: str, check_hop: HopCheck | None, deadline: float) -> FetchedDoc:
         visited: list[httpx.Response] = []
         current = url
         for _ in range(MAX_REDIRECTS + 1):

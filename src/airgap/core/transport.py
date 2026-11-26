@@ -5,6 +5,10 @@ the first request and every redirect hop alike. There is no separate check that 
 change after (rebinding). TLS still verifies the host name: httpcore passes the origin's name as
 SNI, while the TCP connection goes to the checked address.
 
+The fetch deadline holds here too: the lookup, each connect attempt, the TLS handshake and every
+read and write get at most what is left of the fetch in progress, so headers sent one byte at a
+time or many unreachable DNS answers cannot extend it.
+
 Built on the public APIs of httpcore, which httpx requires and pins; no package is added.
 """
 
@@ -12,7 +16,9 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import ssl
 import threading
+import time
 import typing
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -20,7 +26,7 @@ from contextlib import contextmanager
 import httpcore
 import httpx
 
-from airgap.core.fetcher import AddressRefused
+from airgap.core.fetcher import CURRENT_DEADLINE, AddressRefused
 from airgap.core.policy import is_public_address
 
 # Every address a host resolves to, for (host, port). Injectable so tests never touch DNS.
@@ -53,6 +59,48 @@ def _resolve_within(resolve: Resolver, host: str, port: int, timeout: float | No
     return list(box[0])
 
 
+def _within_deadline(
+    timeout: float | None, expired: type[httpcore.TimeoutException]
+) -> float | None:
+    """`timeout` cut to what is left of the fetch in progress; `expired` once nothing is left."""
+    deadline = CURRENT_DEADLINE.get()
+    if deadline is None:
+        return timeout
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise expired("the fetch deadline passed")
+    return left if timeout is None else min(timeout, left)
+
+
+class _DeadlineStream(httpcore.NetworkStream):
+    """Reads the deadline at each call, not at connect, so a pooled connection serves every
+    request on that request's own deadline."""
+
+    def __init__(self, inner: httpcore.NetworkStream) -> None:
+        self._inner = inner
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        return self._inner.read(max_bytes, _within_deadline(timeout, httpcore.ReadTimeout))
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        self._inner.write(buffer, _within_deadline(timeout, httpcore.WriteTimeout))
+
+    def close(self) -> None:
+        self._inner.close()
+
+    def start_tls(
+        self,
+        ssl_context: ssl.SSLContext,
+        server_hostname: str | None = None,
+        timeout: float | None = None,
+    ) -> httpcore.NetworkStream:
+        left = _within_deadline(timeout, httpcore.ConnectTimeout)
+        return _DeadlineStream(self._inner.start_tls(ssl_context, server_hostname, left))
+
+    def get_extra_info(self, info: str) -> typing.Any:
+        return self._inner.get_extra_info(info)
+
+
 class _PublicOnlyBackend(httpcore.NetworkBackend):
     """Resolves the host, refuses it if any answer is not public, then connects to an answer it
     checked. A host in `private_hosts` (exact match, never a subdomain) skips the address check."""
@@ -76,7 +124,9 @@ class _PublicOnlyBackend(httpcore.NetworkBackend):
         socket_options: typing.Iterable[httpcore.SOCKET_OPTION] | None = None,
     ) -> httpcore.NetworkStream:
         name = host.lower().rstrip(".")
-        found = _resolve_within(self._resolve, name, port, timeout)
+        found = _resolve_within(
+            self._resolve, name, port, _within_deadline(timeout, httpcore.ConnectTimeout)
+        )
         try:
             answers = [ipaddress.ip_address(a.split("%", 1)[0]) for a in found]
         except ValueError as exc:
@@ -86,12 +136,15 @@ class _PublicOnlyBackend(httpcore.NetworkBackend):
             raise AddressRefused(name)
         error: Exception | None = None
         for addr in answers:
+            left = _within_deadline(timeout, httpcore.ConnectTimeout)
             try:
-                return self._inner.connect_tcp(
-                    str(addr), port, timeout, local_address, socket_options
+                stream = self._inner.connect_tcp(
+                    str(addr), port, left, local_address, socket_options
                 )
             except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
                 error = exc
+            else:
+                return _DeadlineStream(stream)
         assert error is not None
         raise error
 
