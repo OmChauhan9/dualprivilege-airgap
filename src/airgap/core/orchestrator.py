@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from airgap.core.plan import Plan, validate_plan
 from airgap.core.policy import UserContext
 from airgap.core.schemas import SCHEMAS
-from airgap.models.base import ChatModel
+from airgap.models.base import ChatModel, Completion
 from airgap.models.jsonutil import extract_json_object
 
 PLAN_SYSTEM = """You are a planner for a tool-using agent. You never see web pages.
@@ -74,6 +74,10 @@ class Orchestrator:
             # No constrained decoding for the planner: forcing the full union schema made the real
             # model run away inside a string. The plan is parsed and validated in code instead.
             comp = self.model.complete(messages, role="orchestrator")
+            if not isinstance(comp, Completion):
+                raise TypeError(
+                    f"planner.complete must return airgap.Completion, not {type(comp).__name__}"
+                )
             self.prompt_tokens += comp.prompt_tokens
             self.completion_tokens += comp.completion_tokens
             try:

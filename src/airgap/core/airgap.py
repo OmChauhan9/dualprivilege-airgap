@@ -183,11 +183,15 @@ class Airgap:
 
         Returns a RunResult for anything a page, the reader model, the policy or your functions
         do, and when the planner's plan is rejected (`error` "PlanRejected: ..."). Raises
-        RuntimeError when called from inside a run. Raises whatever the planner model's `complete`
+        RuntimeError when called from inside a run, and TypeError for a `run_id` that is not a
+        non-empty str or a planner whose `complete` returns something other than a
+        `Completion`. Raises whatever the planner model's `complete`
         raises (a ConnectionError, say), BudgetExceeded for the model spend cap, and any other
         BaseException (KeyboardInterrupt); each carries the partial result as
         `exc.airgap_result`.
         """
+        if run_id is not None and not (isinstance(run_id, str) and run_id):
+            raise TypeError(f"run_id must be a non-empty str or None, not {run_id!r}")
         return _execute(self, request, run_id, on_event, _Ablation())
 
     def _context(self, request: str) -> UserContext:
@@ -272,8 +276,9 @@ def _vet_grant(
             if not (isinstance(h, str) and h and is_hostname(h))
         ]
     problems += [
-        f"domains: {h!r} is not a registrable domain, and P5 compares registrable domains; "
-        f"pass {registrable_domain(h)!r}, which allows every host under it"
+        f"domains: {h!r} is not a registrable domain, and P5 compares registrable domains (the "
+        f"last two labels). Passing {registrable_domain(h)!r} would allow every host under "
+        f"{registrable_domain(h)!r}, which on shared hosting means every tenant's site"
         for h in sorted(domains, key=repr)
         if isinstance(h, str) and h and is_hostname(h) and registrable_domain(h) != h
     ]
