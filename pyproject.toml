@@ -1,7 +1,7 @@
 [project]
 name = "dualprivilege-airgap"
 version = "0.1.0"
-description = "A router that lets LLM agents read untrusted web pages without handing those pages the keys. Runs against an in-process mock web."
+description = "A router that lets LLM agents read untrusted web pages without handing those pages the keys. Evaluated only against an in-process mock web."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }

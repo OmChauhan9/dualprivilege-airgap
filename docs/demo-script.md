@@ -180,7 +180,7 @@ robust (one model, `muse-spark-1.3`, was tested, and data lies such as an inflat
 still get through the default mode); that any attack class is fully stopped; that the 0/57
 held-out result means the pipeline is secure (see the README); that adaptive attackers cannot win
 (three sessions on `86468f3` each beat the default mode on 6 of 10 scenarios, all with data
-lies, and the attacker's own wallet was never paid); that it works on the real web (it is an in-process mock web with no TLS).
+lies, and the attacker's own wallet was never paid); that it works on the real web (every evaluation used the in-process mock web; the real-web transport, `Airgap`'s default, is new and has not been evaluated).
 
 ## 4. Fallback plan
 
