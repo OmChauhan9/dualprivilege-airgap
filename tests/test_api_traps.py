@@ -183,8 +183,9 @@ def test_a_missing_planner_is_refused_naming_planner():
 
 @pytest.mark.parametrize("name", ["pay", "send_email", "confirm"])
 def test_a_function_argument_that_is_not_callable_is_refused_naming_it(name):
+    not_callable: dict[str, Any] = {name: "yes"}
     with pytest.raises((TypeError, ValueError), match=name):
-        Airgap(planner=FakeLLM(), **{name: "yes"})
+        Airgap(planner=FakeLLM(), **not_callable)
 
 
 def test_an_object_with_an_async_call_method_is_refused_like_an_async_function():
