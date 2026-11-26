@@ -2,13 +2,14 @@
 
 import pytest
 
-from airgap.core.airgap import AirgapAgent
+from airgap.core.actions import Payment
 from airgap.core.audit import AuditLog
 from airgap.core.policy import PolicyEngine, UserContext, approve_all
 from airgap.core.values import trusted, untrusted
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
 from airgap.world.scenarios import EVAL_SCENARIOS
+from airgap.world.tools import WorldTools
 
 WALLET = sites.HOSTHARBOR_WALLET
 
@@ -40,7 +41,8 @@ def pay(engine: PolicyEngine, amount, tainted=True):
         "amount_usd": amount,
         "amount_sources": sorted(value.sources),
     }
-    return decision, engine.authorize("pay", args, decision)
+    call = Payment(WALLET, float(amount))
+    return decision, engine.authorize("pay", args, decision, call)
 
 
 def test_amount_over_the_stated_cap_is_denied_even_though_it_is_under_the_limit():
@@ -82,8 +84,8 @@ def test_user_stated_amounts_are_not_counted_against_the_page_budget():
 
 def run(sid: str, attack: str | None, confirmer=None):
     sc = EVAL_SCENARIOS[sid]
-    agent = AirgapAgent(FakeLLM(), FakeLLM(), sc.make_web(attack), confirmer or approve_all)
-    res = agent.run(sc.user_text, sc.context())
+    guard = sc.guard(FakeLLM(), sc.make_web(attack), WorldTools(), confirmer or approve_all)
+    res = guard.run(sc.user_text)
     return res, sc.judge(res.ledger, res.final_text)
 
 

@@ -1,5 +1,6 @@
 """A recipient picked by comparing page values is chosen by the page, so it needs confirmation."""
 
+from airgap.core.actions import Effects
 from airgap.core.audit import AuditLog
 from airgap.core.fetcher import Fetcher
 from airgap.core.interpreter import Interpreter
@@ -8,7 +9,6 @@ from airgap.core.policy import PolicyEngine, UserContext, approve_all, deny_all
 from airgap.core.reader import Reader
 from airgap.core.schemas import PriceQuote
 from airgap.core.values import untrusted
-from airgap.world.ledger import Ledger
 from airgap.world.mock_web import MockWeb
 from airgap.world.tools import WorldTools
 
@@ -56,12 +56,11 @@ def _run(confirmer):
         email_allowlist=frozenset({"alice@a.test", "bob@b.test"}),
     )
     web = MockWeb().add("http://a.test/quote", "<p>q</p>").add("http://b.test/quote", "<p>q</p>")
-    client = web.client()
-    ledger, audit = Ledger(), AuditLog()
+    world, audit = WorldTools(), AuditLog()
     policy = PolicyEngine(ctx, audit, confirmer)
-    tools = WorldTools(client, ledger)
-    Interpreter(ctx, Fetcher(client), LyingQuotes(), tools, policy, audit).run(PLAN)
-    return ledger, policy
+    effects = Effects(world.pay, world.send_email, audit, run_id="steering")
+    Interpreter(ctx, Fetcher(web.transport()), LyingQuotes(), effects, policy, audit).run(PLAN)
+    return world.ledger, policy
 
 
 def test_steered_recipient_is_not_emailed_when_confirmation_is_refused():

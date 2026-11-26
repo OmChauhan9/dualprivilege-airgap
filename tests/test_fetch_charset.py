@@ -10,8 +10,7 @@ def _fetch(content: bytes, content_type: str) -> str:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=content, headers={"content-type": content_type})
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    return Fetcher(client).fetch("http://ledgerlens.test/invoice").raw
+    return Fetcher(httpx.MockTransport(handler)).fetch("http://ledgerlens.test/invoice").raw
 
 
 def test_ebcdic_page_is_refused():

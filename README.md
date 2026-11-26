@@ -124,7 +124,9 @@ Also not stopped, or not tested:
   That host can still be one the page chose.
 - **Text-to-user attacks and phishing.** Answers can carry page-derived values. If the user opens a
   lookalike link, P5 allows that domain. Only the payee rules still hold.
-- **Real web.** There is no real HTTPS fetcher and no TLS provenance.
+- **Real web.** The real-web fetcher (`Airgap` with its default transport) is new. No
+  evaluation has run against it: every published number uses the in-process mock web. There
+  is no TLS provenance.
 - **Adaptive attacks** were evaluated with a small budget. There was one attacker model, which is
   also the target, and at most 8 rounds per session (three sessions on `86468f3`, one on earlier
   code). Only one real model has been used (`muse-spark-1.3`).
@@ -201,6 +203,87 @@ Without the console build, `serve` still runs the API and shows build instructio
 endpoints are `GET /api/scenarios`, `/api/run/stream?scenario=payment&channel=css_display_none`,
 `/api/results/runs` and `/api/results`. [`docs/api-contract.md`](docs/api-contract.md) has the contract.
 The console has a replay mode for reproducible recordings, described in [`web/README.md`](web/README.md).
+
+## Use it in your agent
+
+`Airgap` puts the guard in front of your own payment and mail functions. Your planner model sees
+only the user's request. Pages are fetched by the guard, sanitized and read by a tool-less reader.
+P0 to P7 run in plain code before your function is called.
+
+```python
+from airgap import Airgap, Confirmation, Declined, Email, Payment
+
+def pay(p: Payment) -> str:
+    r = bank.transfers.create(to=p.payee, amount=p.amount_usd, memo=p.memo, idempotency_key=p.key)
+    if r.status == "rejected":
+        raise Declined(r.reason)      # the money certainly did not move
+    return r.id                       # kept as Action.receipt, never shown to a model
+
+def send_email(e: Email) -> str:
+    return mailer.send(to=e.to, subject=e.subject, text=e.body).message_id
+
+def confirm(c: Confirmation) -> bool:  # asked only when a page supplied the amount or the choice
+    print(f"Pay {c.call.amount_usd:.2f} USD to {c.call.payee}? Read from {c.amount_read_from}")
+    return input("[y/N] ") == "y"     # approves only by returning exactly True
+
+guard = Airgap(
+    planner=my_model,                 # any object with ChatModel's `name` and `complete`
+    pay=pay,
+    send_email=send_email,
+    payees={"landlord": "0x1ED6E4000000000000000000000000000000AA01"},
+    email_recipients={"me@example.com"},
+    per_payment_usd=500,
+    per_run_usd=1000,
+    confirm=confirm,
+)
+result = guard.run("Pay my landlord the rent due at https://portal.rentco.com/due, up to $450",
+                   run_id=message_id)
+```
+
+[`examples/byo_tools.py`](examples/byo_tools.py) runs this flow offline, with the FakeLLM and an
+in-process page, and CI runs it.
+
+**Your functions.** Each takes one frozen `Payment` or `Email` and has three outcomes:
+
+- Return normally. The call happened. It is in `result.ledger`.
+- Raise `Declined`. It certainly did not happen. The plan goes on, as after a policy denial, and
+  the drafted reply is withheld.
+- Raise anything else. Nobody knows whether it happened. The run stops there, and no later
+  function runs.
+
+Leave out `pay` or `send_email` and the guard never does that action (P0). The guard calls each
+approved function exactly once. It never retries. The guard checks its configuration when it is
+built, and an error names the argument. An async function, or one that cannot be called with one
+argument, is refused. So are a payee that is not a `0x` address, a recipient that is not an email
+address, a domain or private host that is not a host name, and limits that are not finite and
+positive, or where `per_payment_usd` exceeds `per_run_usd`.
+
+**What you see on an unknown outcome.** `result.unsettled` holds the call with its exact
+arguments, its idempotency key (`a.call.key`) and the exception (`a.exception`). It is never in
+`result.ledger`. `result.error` reads
+`OutcomeUnknown: pay 45.00 USD to 0x1ED6...AA01: outcome unknown (TimeoutError)`. The reply says
+the payment may or may not have happened. Check with your provider before you retry. The key is
+derived from `run_id`, the payee or recipient, the amount in cents and the memo or subject. A run
+repeated with the same `run_id` sends the same key for the same payment, so your provider can drop
+the duplicate. Without `run_id`, every run gets a random one.
+
+**The network.** The guard builds every request itself, with fixed headers. No client, hook,
+cookie or credential of yours reaches a page. Each fetch reads at most 1 MB, decompresses only
+gzip and deflate and only up to that cap, and stops after 20 s for all hops together, name
+lookups included. The default transport connects only to public addresses, and checks the address it connects to, so DNS
+rebinding cannot get around it. To reach an intranet page the user names, list its exact host in
+`private_hosts`. `transport=` replaces the guard's transport. A transport you pass is trusted
+code. It must send one request per call and never follow redirects, and the guard does not check
+the addresses it connects to. So `private_hosts` and `transport=` cannot be combined.
+
+**Limits and logs.** Limits are per run. An approved amount stays counted against
+`per_run_usd` even when your function declines it or its outcome is unknown. A callback that calls
+`run` again on the same thread is refused. A callback must never call the guard from another
+thread, because the guard cannot see that and the nested run gets fresh limits.
+`run(on_event=...)` streams every audit event. The approved `policy` event comes just before your
+function runs, so a sink that persists events has a record if the process dies mid-payment.
+`Event.untrusted` names the fields that may hold page text. Never give those to a model with tools
+or render them as HTML. `result.summary` has code-written lines for logs.
 
 ## Results
 
@@ -528,15 +611,18 @@ if it exceeds the estimate. It records a failed call as $0
 
 ```text
 src/airgap/
-  core/        the router: orchestrator, plan DSL + validator, interpreter, policy engine,
-               fetcher, sanitizer, reader, reader schemas, taint labels, audit log
+  __init__.py  the public API: Airgap and the types its callers see
+  core/        the router: Airgap facade, orchestrator, plan DSL + validator, interpreter,
+               policy engine, developer-function outcomes, fetcher, public-address transport,
+               sanitizer, reader, reader schemas, taint labels, audit log
   baseline/    the unguarded agent (one context holds page text and tools)
-  world/       mock web, fictional .test sites, scenarios with ground-truth judges, ledger
+  world/       mock web, fictional .test sites, scenarios with ground-truth judges, mock bank
   eval/        attack and benign corpus, harness, adaptive attacker, Wilson intervals
   models/      ChatModel interface, FakeLLM, Meta Model API client, record/replay cache (not
                wired into any command)
   server/      FastAPI app with SSE streaming for the console
   cli.py       airgap demo | eval | adaptive | serve | spend
+examples/      byo_tools.py: your own pay and send_email behind the guard, offline
 web/           React + Vite console (two panes, trace timeline, policy cards, results panel)
 tests/         unit, attack, campaign, fetch-hardening, eval and server tests
 docs/          architecture, ADRs, API contract
@@ -570,7 +656,7 @@ The building blocks are not new. [PROVENANCE.md](PROVENANCE.md) lists what is or
   [#35](https://github.com/OmChauhan9/dualprivilege-airgap/issues/35)). A stated cap only bounds
   how far a lie can go. The corpus cap cases use lies above the cap.
 - Keep attacker-chosen host names out of fetch and redirect error messages shown to the user.
-- A real HTTPS fetcher with TLS provenance and the Public Suffix List.
+- TLS provenance and the Public Suffix List for the real-web fetcher.
 - More reader schemas and plan operations, with the utility cost reported next to attack success.
 
 ## License

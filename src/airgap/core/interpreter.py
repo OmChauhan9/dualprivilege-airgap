@@ -1,14 +1,18 @@
-"""Interpreter: executes a validated plan. Tools run only after the policy engine approves."""
+"""Interpreter: executes a validated plan. The developer's functions run only after the policy
+engine approves."""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from pydantic import BaseModel
 
-from airgap.core.audit import AuditLog
-from airgap.core.fetcher import FetchedDoc, Fetcher, FetchError
+from airgap.core.actions import Action, Effects, Email, OutcomeUnknown, Payment, kind_of
+from airgap.core.audit import AuditLog, AuditSinkFailed
+from airgap.core.fetcher import AddressRefused, FetchedDoc, Fetcher, FetchError
 from airgap.core.plan import (
     Alias,
     Answer,
@@ -21,12 +25,34 @@ from airgap.core.plan import (
     Read,
     SendEmail,
 )
-from airgap.core.policy import PermissivePolicy, PolicyEngine, UserContext
+from airgap.core.policy import Decision, Policy, UserContext
 from airgap.core.reader import Reader
 from airgap.core.sanitizer import SanitizeResult, sanitize
 from airgap.core.values import Tainted, merge_sources, trusted
 from airgap.models.budget import BudgetExceeded
-from airgap.world.tools import WorldTools
+
+FROM_A_PAGE = "<from a page>"
+
+
+def _shown(value: Tainted) -> Any:
+    """How a payee, recipient or URL appears in `blocked` and in audit args: page text never."""
+    return FROM_A_PAGE if value.is_tainted and isinstance(value.value, str) else value.value
+
+
+def _cents(amount: Tainted) -> Tainted:
+    """The amount rounded half-up to whole cents, so the amount approved is the amount charged.
+    A value already in whole cents, or not a finite number, is returned unchanged for P2."""
+    v = amount.value
+    if isinstance(v, bool) or not isinstance(v, int | float | str):
+        return amount
+    try:
+        exact = float(v)
+        cents = float(Decimal(str(v).strip()).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    except (ValueError, ArithmeticError):
+        return amount
+    if not math.isfinite(exact) or exact == cents:
+        return amount
+    return Tainted(cents, amount.sources, amount.steered_by)
 
 
 @dataclass
@@ -51,8 +77,8 @@ class Interpreter:
         ctx: UserContext,
         fetcher: Fetcher,
         reader: Reader,
-        tools: WorldTools,
-        policy: PolicyEngine | PermissivePolicy,
+        effects: Effects,
+        policy: Policy,
         audit: AuditLog,
         sanitize_input: bool = True,
     ) -> None:
@@ -60,7 +86,7 @@ class Interpreter:
         self.ctx = ctx
         self.fetcher = fetcher
         self.reader = reader
-        self.tools = tools
+        self.effects = effects
         self.policy = policy
         self.audit = audit
         self.env: dict[str, Any] = {}
@@ -117,8 +143,13 @@ class Interpreter:
                 result.error = f"{type(exc).__name__}: {exc}"
                 self.audit.emit("error", error=result.error)
                 break
-        stopped = [*result.denied, *(["the run stopped on an error"] if result.error else [])]
-        if stopped and result.answer is not None:
+        unsettled = [a for a in self.effects.actions if a.outcome == "unknown"]
+        if unsettled:
+            failure = [f"{a.summary}; it may or may not have happened" for a in unsettled]
+        else:
+            failure = ["the run stopped on an error"] if result.error else []
+        stopped = [*result.denied, *failure]
+        if stopped and (result.answer is not None or unsettled):
             # The drafted reply may describe things that never happened, so it is never emitted.
             result.answer = (
                 "Not completed as planned: " + "; ".join(stopped) + ". Some actions did "
@@ -127,25 +158,33 @@ class Interpreter:
             )
             answer_untrusted = False
         if result.answer is not None:
-            self.audit.emit("answer", text=result.answer, untrusted_derived=answer_untrusted)
+            try:
+                self.audit.emit("answer", text=result.answer, untrusted_derived=answer_untrusted)
+            except AuditSinkFailed as exc:
+                result.error = f"AuditSinkFailed: {exc}"
         return result
 
     def _fetch(self, step: Fetch, result: ExecResult) -> None:
         url = self.resolve(step.url)
         decision = self.policy.check_fetch(url)
-        if not self.policy.authorize("fetch", {"url": url.value}, decision):
-            result.blocked.append(f"fetch {url.value}: {decision.reason}")
+        if not self.policy.authorize("fetch", {"url": _shown(url)}, decision):
+            result.blocked.append(f"fetch {_shown(url)}: {decision.reason}")
             raise FetchError(decision.reason)
 
-        def check_hop(next_url: str) -> None:
-            hop = self.policy.check_fetch(trusted(next_url))
+        def check_hop(prev_url: str, next_url: str) -> None:
+            hop = self.policy.check_fetch(trusted(next_url), came_from=prev_url)
             if not self.policy.authorize("fetch_redirect", {"url": next_url}, hop):
                 result.blocked.append(f"redirect: {hop.reason}")
                 raise FetchError(hop.reason)
 
-        doc = self.fetcher.fetch(str(url.value), check_hop=check_hop)
+        try:
+            doc = self.fetcher.fetch(str(url.value), check_hop=check_hop)
+        except AddressRefused as exc:
+            refused = Decision("deny", ("P5",), str(exc))
+            self.policy.authorize("fetch_connect", {"host": exc.host}, refused)
+            result.blocked.append(f"fetch: {exc}")
+            raise FetchError(str(exc)) from exc
         self.policy.note_untrusted_input()
-        self.tools.ledger.fetches.append(doc.provenance.final_url)
         self.audit.emit(
             "fetch",
             requested_url=doc.provenance.requested_url,
@@ -200,32 +239,49 @@ class Interpreter:
 
     def _pay(self, step: Pay, result: ExecResult) -> None:
         payee = self._payee_address(self.resolve(step.payee))
-        amount = self.resolve(step.amount)
+        amount = _cents(self.resolve(step.amount))
         memo = trusted(step.memo)
         decision = self.policy.check_pay(payee, amount, memo)
         args = {
-            "payee": payee.value,
+            "payee": _shown(payee),
             "amount_usd": amount.value,
             "memo": step.memo,
             # What the confirmation dialog can show: where the number came from, and your cap.
             "amount_sources": sorted(amount.sources | amount.steered_by),
             "stated_cap_usd": self.ctx.stated_cap_usd,
         }
-        if self.policy.authorize("pay", args, decision):
-            self.tools.pay(str(payee.value), float(amount.value), step.memo)
+        call = None
+        if decision.verdict != "deny":
+            call = self.effects.keyed(Payment(str(payee.value), float(amount.value), step.memo))
+        if self.policy.authorize("pay", args, decision, call):
+            assert call is not None
+            self._settle(self.effects.call(call, confirmed=decision.verdict == "confirm"), result)
         else:
-            result.blocked.append(f"pay {amount.value} to {payee.value}: {decision.reason}")
+            result.blocked.append(f"pay {amount.value} to {_shown(payee)}: {decision.reason}")
             result.denied.append(f"pay denied by {','.join(decision.rules) or 'policy'}")
 
     def _email(self, step: SendEmail, result: ExecResult) -> None:
         to = self.resolve(step.to)
         decision = self.policy.check_email(to, trusted(step.subject), trusted(step.body))
-        args = {"to": to.value, "subject": step.subject}
-        if self.policy.authorize("send_email", args, decision):
-            self.tools.send_email(str(to.value), step.subject, step.body)
+        args = {"to": _shown(to), "subject": step.subject}
+        call = None
+        if decision.verdict != "deny":
+            call = self.effects.keyed(Email(str(to.value), step.subject, step.body))
+        if self.policy.authorize("send_email", args, decision, call):
+            assert call is not None
+            self._settle(self.effects.call(call, confirmed=decision.verdict == "confirm"), result)
         else:
-            result.blocked.append(f"email to {to.value}: {decision.reason}")
+            result.blocked.append(f"email to {_shown(to)}: {decision.reason}")
             result.denied.append(f"email denied by {','.join(decision.rules) or 'policy'}")
+
+    @staticmethod
+    def _settle(action: Action, result: ExecResult) -> None:
+        """Declined continues the plan, as a policy denial does; unknown stops the run."""
+        kind = kind_of(action.call)
+        if action.outcome == "declined":
+            result.denied.append(f"{kind} declined by your {kind} function")
+        elif action.outcome == "unknown":
+            raise OutcomeUnknown(action.summary) from action.exception
 
     def _answer(self, step: Answer) -> tuple[str, bool]:
         values = {name: self.resolve(arg) for name, arg in step.args.items()}

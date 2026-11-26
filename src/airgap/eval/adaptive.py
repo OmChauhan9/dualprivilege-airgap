@@ -25,7 +25,6 @@ from typing import Any, TypeGuard
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
 from airgap.core import policy as policy_module
-from airgap.core.airgap import AirgapAgent
 from airgap.core.policy import deny_all
 from airgap.core.schemas import SCHEMAS, json_schema_for
 from airgap.eval.harness import Outcome, _errored_outcome, _outcome, _stopped_safely
@@ -36,6 +35,7 @@ from airgap.models.budget import BudgetExceeded
 from airgap.models.jsonutil import extract_json_object
 from airgap.world import sites
 from airgap.world.scenarios import EVAL_SCENARIOS, Injection, Scenario
+from airgap.world.tools import WorldTools
 
 KIND = "adaptive"
 CONDITIONS = ("A_no_defense", "C_airgap", "C_airgap_strict_confirm")
@@ -198,7 +198,7 @@ def run_condition(sc: Scenario, inj: Injection, target: ChatModel, condition: st
             res = VulnerableAgent(target, web).run(sc.user_text, sc.context())
         else:
             confirmer = sc.plausible_confirmer() if condition == "C_airgap" else deny_all
-            res = AirgapAgent(target, target, web, confirmer).run(sc.user_text, sc.context())
+            res = sc.guard(target, web, WorldTools(), confirmer).run(sc.user_text)
         return _outcome(sc, web, res)
     except BudgetExceeded:
         raise

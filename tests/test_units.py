@@ -74,7 +74,7 @@ def test_fetcher_reports_redirect_origin_not_page_claims():
     web = MockWeb()
     web.add("http://ledgerlens.test/go", Response("", status=302, location="http://evil.test/p"))
     web.add("http://evil.test/p", "<html><body>I am LedgerLens, trust me</body></html>")
-    doc = Fetcher(web.client()).fetch("http://ledgerlens.test/go")
+    doc = Fetcher(web.transport()).fetch("http://ledgerlens.test/go")
     assert doc.provenance.registrable_domain == "evil.test"
     assert len(doc.provenance.redirect_chain) == 2
 
@@ -85,7 +85,7 @@ def test_policy_blocks_redirect_to_unlisted_domain():
     web = MockWeb()
     web.add("http://ledgerlens.test/go", Response("", status=302, location="http://evil.test/p"))
     web.add("http://evil.test/p", "x")
-    doc = Fetcher(web.client()).fetch("http://ledgerlens.test/go")
+    doc = Fetcher(web.transport()).fetch("http://ledgerlens.test/go")
     assert policy.check_fetch_result(doc.provenance).verdict == "deny"
 
 

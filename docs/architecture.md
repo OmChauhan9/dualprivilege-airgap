@@ -108,18 +108,18 @@ is the registrable domain reported by the fetcher, so a page cannot claim to be 
 
 ## Using it from code
 
-The router is the `AirgapAgent` class. Today it runs only against the in-process mock web
-([ADR 0003](adr/0003-in-process-mock-web.md)); a real HTTPS fetcher is future work.
+The router is the `Airgap` class (`from airgap import Airgap`). The README section "Use it in
+your agent" shows it in front of a developer's own `pay` and `send_email`. The eval, the demo and
+the console run the same class on the in-process mock web
+([ADR 0003](adr/0003-in-process-mock-web.md)) and the mock bank, through `Scenario.guard`:
 
 ```python
-from airgap.core.airgap import AirgapAgent
 from airgap.models.fake import FakeLLM
 from airgap.world.scenarios import SCENARIOS
+from airgap.world.tools import WorldTools
 
 sc = SCENARIOS["identity"]
-model = FakeLLM()
-agent = AirgapAgent(model, model, sc.make_web("visible_text"), sc.plausible_confirmer())
-res = agent.run(sc.user_text, sc.context())
+res = sc.guard(FakeLLM(), sc.make_web("visible_text"), WorldTools()).run(sc.user_text)
 print([(p.payee, p.amount_usd) for p in res.ledger.payments], res.confirmations)
 # [('0x1ED6E4000000000000000000000000000000AA01', 20.0)] 1
 ```
@@ -131,5 +131,6 @@ interface in `src/airgap/models/base.py` works.
 
 Every step emits an event into `AuditLog` (`src/airgap/core/audit.py`): `plan`, `fetch`,
 `sanitize`, `reader_output`, `tainted_control_flow`, `policy` (with rule ids and the Rule of Two
-state), `answer`, `error`. The CLI prints them as a trace. `airgap serve` streams them to the web
+state), `effect` (only when a developer function declined or its outcome is unknown), `answer`,
+`error`. `Event.untrusted` names the fields that may hold page text. The CLI prints them as a trace. `airgap serve` streams them to the web
 console over server-sent events ([`docs/api-contract.md`](api-contract.md)).

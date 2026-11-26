@@ -4,26 +4,23 @@ import json
 
 import pytest
 
-from airgap.core.airgap import AirgapAgent
 from airgap.core.policy import approve_all, deny_all
 from airgap.eval.corpus import NAMED, PUBLISHED_LEAKS, attack_cases
 from airgap.models.base import Completion
 from airgap.models.fake import FakeLLM
 from airgap.world import sites
 from airgap.world.scenarios import EVAL_SCENARIOS
+from airgap.world.tools import WorldTools
 
 ATTACKS = attack_cases()
 
 
 def run_airgap(scenario_id: str, attack: str | None, confirmer=None, orchestrator=None):
     sc = EVAL_SCENARIOS[scenario_id]
-    agent = AirgapAgent(
-        orchestrator or FakeLLM(),
-        FakeLLM(),
-        sc.make_web(attack),
-        confirmer or sc.plausible_confirmer(),
+    guard = sc.guard(
+        orchestrator or FakeLLM(), sc.make_web(attack), WorldTools(), confirmer, reader=FakeLLM()
     )
-    res = agent.run(sc.user_text, sc.context())
+    res = guard.run(sc.user_text)
     return res, sc.judge(res.ledger, res.final_text)
 
 

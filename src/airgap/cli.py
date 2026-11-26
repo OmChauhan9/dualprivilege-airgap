@@ -8,7 +8,6 @@ import sys
 from typing import cast
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
-from airgap.core.airgap import AirgapAgent
 from airgap.core.audit import Event
 from airgap.core.result import RunResult
 from airgap.eval.corpus import Split, is_heldout
@@ -16,6 +15,7 @@ from airgap.models.base import ChatModel, RealCallsDisabled
 from airgap.models.budget import BudgetExceeded
 from airgap.models.fake import FakeLLM
 from airgap.world.scenarios import SCENARIOS, Scenario
+from airgap.world.tools import WorldTools
 
 # Color only on a terminal, and never when NO_COLOR is set (https://no-color.org).
 _COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
@@ -114,9 +114,7 @@ def demo(args: argparse.Namespace) -> None:
         print(f"model: {model.name}")
     base = VulnerableAgent(model, sc.make_web(channel)).run(sc.user_text, sc.context())
     _show("UNGUARDED AGENT", base, sc, channel)
-    air = AirgapAgent(model, model, sc.make_web(channel), sc.plausible_confirmer()).run(
-        sc.user_text, sc.context()
-    )
+    air = sc.guard(model, sc.make_web(channel), WorldTools()).run(sc.user_text)
     _show("AIRGAPPED AGENT", air, sc, channel)
 
 

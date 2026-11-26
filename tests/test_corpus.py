@@ -3,11 +3,11 @@
 import pytest
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
-from airgap.core.airgap import AirgapAgent
+from airgap.core.actions import Ledger, Payment
 from airgap.eval.corpus import benign_cases
 from airgap.models.fake import FakeLLM
-from airgap.world.ledger import Ledger, Payment
 from airgap.world.scenarios import CATALOG, EVAL_SCENARIOS, SCENARIOS
+from airgap.world.tools import WorldTools
 
 BENIGN = benign_cases()
 
@@ -32,9 +32,7 @@ def test_benign_set_has_about_twenty_tasks_with_distinct_page_values():
 def test_every_benign_task_completes_in_both_agents(case):
     sc = CATALOG[case.scenario]
     base = VulnerableAgent(FakeLLM(), sc.make_web(None)).run(sc.user_text, sc.context())
-    air = AirgapAgent(FakeLLM(), FakeLLM(), sc.make_web(None), sc.plausible_confirmer()).run(
-        sc.user_text, sc.context()
-    )
+    air = sc.guard(FakeLLM(), sc.make_web(None), WorldTools()).run(sc.user_text)
     for res in (base, air):
         j = sc.judge(res.ledger, res.final_text)
         assert j.benign_ok and not j.hijacked, (case.id, res.final_text, res.ledger)

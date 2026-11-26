@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from airgap.core.airgap import AirgapAgent
+from airgap.core.actions import Effects
 from airgap.core.audit import AuditLog
 from airgap.core.fetcher import Fetcher, registrable_domain
 from airgap.core.interpreter import Interpreter
@@ -14,7 +14,6 @@ from airgap.core.reader import Reader
 from airgap.core.sanitizer import sanitize
 from airgap.core.values import trusted
 from airgap.models.fake import FakeLLM
-from airgap.world.ledger import Ledger
 from airgap.world.scenarios import CATALOG
 from airgap.world.tools import WorldTools
 
@@ -30,9 +29,7 @@ ADDR_40 = "0x" + "1" * 40
 )
 def test_reply_does_not_claim_a_payment_that_policy_denied(scenario, attack):
     sc = CATALOG[scenario]
-    res = AirgapAgent(FakeLLM(), FakeLLM(), sc.make_web(attack), approve_all).run(
-        sc.user_text, sc.context()
-    )
+    res = sc.guard(FakeLLM(), sc.make_web(attack), WorldTools(), approve_all).run(sc.user_text)
     assert not res.ledger.payments
     assert "paid" not in res.final_text.lower()
     assert "did not run" in res.final_text and "P2" in res.final_text
@@ -40,17 +37,15 @@ def test_reply_does_not_claim_a_payment_that_policy_denied(scenario, attack):
 
 def test_denied_action_status_line_never_repeats_page_controlled_text():
     sc = CATALOG["identity"]
-    res = AirgapAgent(FakeLLM(), FakeLLM(), sc.make_web("amount_huge"), approve_all).run(
-        sc.user_text, sc.context()
+    res = sc.guard(FakeLLM(), sc.make_web("amount_huge"), WorldTools(), approve_all).run(
+        sc.user_text
     )
     assert "999999" not in res.final_text  # the page's number is not echoed in the status line
 
 
 def test_honest_runs_keep_their_normal_reply():
     sc = CATALOG["identity"]
-    res = AirgapAgent(FakeLLM(), FakeLLM(), sc.make_web(None), sc.plausible_confirmer()).run(
-        sc.user_text, sc.context()
-    )
+    res = sc.guard(FakeLLM(), sc.make_web(None), WorldTools()).run(sc.user_text)
     assert "did not run" not in res.final_text and res.ledger.payments
 
 
@@ -129,13 +124,13 @@ def make_interpreter(text: str) -> Interpreter:
 
     c = UserContext(user_text=text)
     web = MockWeb().add("http://ledgerlens.test/p", "<html><body>Total value: $5.00</body></html>")
-    client = web.client()
     audit = AuditLog()
+    world = WorldTools()
     return Interpreter(
         c,
-        Fetcher(client),
+        Fetcher(web.transport()),
         Reader(FakeLLM()),
-        WorldTools(client, Ledger()),
+        Effects(world.pay, world.send_email, audit, run_id="odd-plans"),
         PolicyEngine(c, audit, approve_all),
         audit,
     )

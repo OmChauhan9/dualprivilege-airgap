@@ -12,13 +12,13 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from airgap.baseline.vulnerable_agent import VulnerableAgent
-from airgap.core.airgap import AirgapAgent
+from airgap.core.actions import Email, Ledger, Payment
 from airgap.core.audit import AuditLog, Event
 from airgap.core.result import RunResult
 from airgap.models.base import ChatModel, Completion, Role
 from airgap.models.fake import FakeLLM
-from airgap.world.ledger import Email, Ledger, Payment
 from airgap.world.scenarios import Scenario
+from airgap.world.tools import WorldTools
 
 Pane = Literal["unguarded", "airgap"]
 Message = dict[str, Any]
@@ -136,8 +136,8 @@ def run_both(
             sc.user_text, sc.context(), AuditLog(sink_for("unguarded"))
         )
         emit("unguarded", "done", done_data(base, sc))
-        air = AirgapAgent(model, model, sc.make_web(channel), sc.plausible_confirmer()).run(
-            sc.user_text, sc.context(), AuditLog(sink_for("airgap"))
+        air = sc.guard(model, sc.make_web(channel), WorldTools()).run(
+            sc.user_text, on_event=sink_for("airgap")
         )
         emit("airgap", "done", done_data(air, sc))
     except Exception as exc:  # surface crashes to the UI instead of a silently dead stream
