@@ -449,6 +449,20 @@ def test_an_allowed_redirect_hop_is_logged_without_the_target_the_server_chose()
     assert hop["approved"] and hop["args"] == {"url": "<from a page>"}
 
 
+def test_a_policy_event_naming_a_host_the_server_chose_flags_that_field_untrusted():
+    site = routes({"https://shop.test/a": redirect("https://zq-pay-now.shop.test:8443/x")})
+    res = run("https://shop.test/a", site)
+    found = [
+        (e, key)
+        for e in res.audit.of_kind("policy")
+        for key, value in e.data.items()
+        if "zq" in json.dumps(value)
+    ]
+    assert found
+    for event, key in found:
+        assert key in event.untrusted, key
+
+
 # ---- N10, N11: where a connection may go ---------------------------------------------------
 
 
