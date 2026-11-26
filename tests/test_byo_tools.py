@@ -296,6 +296,39 @@ def test_D12a_a_base_exception_escapes_carrying_the_partial_result():
     assert [a.outcome for a in res.unsettled] == ["unknown"]
 
 
+def test_D12a_a_base_exception_escapes_even_when_the_event_sink_fails_to_record_it():
+    def on_event(ev: Event) -> None:
+        if ev.kind == "effect":
+            raise OSError("disk full")
+
+    with pytest.raises(KeyboardInterrupt) as info:
+        guard(Planner(pay(10), ANSWER), Bank(KeyboardInterrupt())).run(
+            "pay acme 10", on_event=on_event
+        )
+    res = info.value.airgap_result  # type: ignore[attr-defined]
+    assert [a.outcome for a in res.unsettled] == ["unknown"]
+
+
+def test_an_exception_from_the_reader_model_is_named_by_its_type_only():
+    class BrokenReader:
+        name = "broken-reader"
+
+        def complete(self, messages: Any, *, role: Any, schema: Any = None) -> Completion:
+            raise RuntimeError(f"upstream echoed the page: {MARK}")
+
+    bank = Bank()
+    res = Airgap(
+        planner=Planner(*FETCH_AND_PAY),
+        reader=BrokenReader(),
+        pay=bank.pay,
+        payees={"acme": WALLET},
+        transport=bill_web().transport(),
+    ).run(f"Pay acme the bill at {BILL}")
+    assert bank.calls == []
+    assert res.error == "ReaderModelFailed: the reader model raised RuntimeError"
+    assert MARK not in texts(res)
+
+
 def test_D12b_a_failing_event_sink_after_a_payment_still_returns_the_result():
     def on_event(ev: Event) -> None:
         if ev.kind == "answer":

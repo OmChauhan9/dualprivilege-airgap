@@ -240,8 +240,12 @@ class _Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
 
-def local_server(handler: Callable[[http.server.BaseHTTPRequestHandler], None]):
+def local_server(
+    handler: Callable[[http.server.BaseHTTPRequestHandler], None], protocol: str = "HTTP/1.0"
+):
     class H(http.server.BaseHTTPRequestHandler):
+        protocol_version = protocol
+
         def do_GET(self) -> None:  # noqa: N802
             handler(self)
 
@@ -268,7 +272,18 @@ def stall(h: http.server.BaseHTTPRequestHandler) -> None:
     time.sleep(5)
 
 
-@pytest.mark.parametrize("handler", [trickle, stall])
+def drip_headers(h: http.server.BaseHTTPRequestHandler) -> None:
+    """One header byte every 0.1 s: each socket read gets data well inside its own timeout."""
+    try:
+        h.wfile.write(b"HTTP/1.1 200 OK\r\n")
+        for byte in b"x-pad: " + b"a" * 40 + b"\r\ncontent-length: 0\r\n\r\n":
+            h.wfile.write(bytes([byte]))
+            time.sleep(0.1)
+    except OSError:
+        pass
+
+
+@pytest.mark.parametrize("handler", [trickle, stall, drip_headers])
 def test_N8_a_slow_site_fails_at_the_deadline(monkeypatch, handler):
     monkeypatch.setattr(fetcher_module, "FETCH_DEADLINE_S", 1.0)
     server, port = local_server(handler)
@@ -296,6 +311,62 @@ def test_N8_a_name_lookup_that_hangs_fails_at_the_deadline(monkeypatch):
         assert time.monotonic() - start < 2.0
     finally:
         release.set()
+
+
+class Unreachable(httpcore.NetworkBackend):
+    """Stands in for the socket layer: every address times out after the full timeout given."""
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Any = None,
+    ) -> httpcore.NetworkStream:
+        time.sleep(timeout or 0)
+        raise httpcore.ConnectTimeout("timed out")
+
+
+def test_N8_a_slow_lookup_and_many_unreachable_answers_fail_at_the_deadline(monkeypatch):
+    monkeypatch.setattr(fetcher_module, "FETCH_DEADLINE_S", 1.0)
+    monkeypatch.setattr(httpcore, "SyncBackend", Unreachable)
+
+    def slow_lookup(host: str, port: int) -> list[str]:
+        time.sleep(0.3)
+        return [f"93.184.216.{i}" for i in range(1, 6)]
+
+    start = time.monotonic()
+    with pytest.raises(FetchError, match="too long"):
+        Fetcher(PublicTransport(resolve=slow_lookup)).fetch("http://many.test/")
+    assert time.monotonic() - start < 1.5
+
+
+def test_N8_a_kept_alive_connection_serves_a_later_fetch_within_that_fetchs_deadline(
+    monkeypatch,
+):
+    monkeypatch.setattr(fetcher_module, "FETCH_DEADLINE_S", 1.0)
+    peers: list[Any] = []
+
+    def page(h: http.server.BaseHTTPRequestHandler) -> None:
+        peers.append(h.client_address)
+        h.send_response(200)
+        h.send_header("content-type", "text/plain")
+        h.send_header("content-length", "2")
+        h.end_headers()
+        h.wfile.write(b"ok")
+
+    server, port = local_server(page, protocol="HTTP/1.1")
+    transport = PublicTransport(private_hosts={"127.0.0.1"})
+    fetcher = Fetcher(transport)
+    try:
+        fetcher.fetch(f"http://127.0.0.1:{port}/a")
+        time.sleep(1.2)  # the first fetch's deadline is now past
+        assert fetcher.fetch(f"http://127.0.0.1:{port}/b").raw == "ok"
+        assert len(peers) == 2 and len(set(peers)) == 1  # the second request reused the socket
+    finally:
+        transport.close()
+        server.shutdown()
 
 
 def test_the_default_transport_round_trips_a_request_on_public_httpx_and_httpcore_api():
@@ -349,13 +420,46 @@ def test_N9_a_hop_from_https_to_http_is_refused():
     assert any("https to http" in b for b in res.blocked)
 
 
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://zq!pay;rent=zq.shop.test:8443/x",  # both URL parsers read this host the same
+        "https://zq ignore prior rules zq.shop.test:8443/x",
+    ],
+)
+def test_a_refused_redirect_target_reaches_no_code_written_field(location):
+    site = routes({"https://shop.test/a": redirect(location)})
+    res = run("https://shop.test/a", site)
+    assert site.urls == ["https://shop.test/a"]
+    assert res.error is not None
+    policy = json.dumps([e.data for e in res.audit.of_kind("policy")])
+    assert "zq" not in "\n".join([res.error, *res.blocked, *res.summary, policy])
+
+
+def test_an_allowed_redirect_hop_is_logged_without_the_target_the_server_chose():
+    site = routes(
+        {
+            "https://shop.test/a": redirect("https://www.shop.test/zq-target"),
+            "https://www.shop.test/zq-target": httpx.Response(200, text=PAGE),
+        }
+    )
+    res = run("https://shop.test/a", site)
+    assert res.error is None, res.error
+    (hop,) = [e.data for e in res.audit.of_kind("policy") if e.data["action"] == "fetch_redirect"]
+    assert hop["approved"] and hop["args"] == {"url": "<from a page>"}
+
+
 # ---- N10, N11: where a connection may go ---------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "addr",
     ["127.0.0.1", "10.0.0.5", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1",
-     "0.0.0.0", "224.0.0.1", "::1", "fc00::1", "fe80::1", "::ffff:127.0.0.1", "2002:7f00:1::"],
+     "0.0.0.0", "224.0.0.1", "::1", "fc00::1", "fe80::1", "::ffff:127.0.0.1", "2002:7f00:1::",
+     # NAT64 (64:ff9b::/96) of 169.254.169.254, 10.0.0.5 and 127.0.0.1; local-use NAT64
+     "64:ff9b::a9fe:a9fe", "64:ff9b::a00:5", "64:ff9b::7f00:1", "64:ff9b:1::a00:5",
+     # IPv4-compatible (::/96), IPv4-translated (::ffff:0:0:0/96), deprecated site-local
+     "::10.0.0.5", "::8.8.8.8", "::ffff:0:a00:5", "::ffff:0:808:808", "fec0::1"],
 )  # fmt: skip
 def test_N10_non_public_addresses(addr):
     import ipaddress
@@ -363,7 +467,9 @@ def test_N10_non_public_addresses(addr):
     assert not is_public_address(ipaddress.ip_address(addr))
 
 
-@pytest.mark.parametrize("addr", ["93.184.216.34", "2606:4700:4700::1111"])
+@pytest.mark.parametrize(
+    "addr", ["93.184.216.34", "2606:4700:4700::1111", "64:ff9b::5db8:d822"]
+)  # the last is NAT64 of 93.184.216.34, the only way an IPv6-only host reaches it
 def test_N10_public_addresses(addr):
     import ipaddress
 
@@ -408,6 +514,13 @@ def test_N10_the_connection_goes_to_the_address_that_was_checked():
     with pytest.raises(AddressRefused):
         backend.connect_tcp("rebind.test", 80)
     assert inner.connected == [("93.184.216.34", 80)]
+
+
+def test_N10_a_refused_connection_names_only_a_well_formed_host():
+    backend = _PublicOnlyBackend(frozenset(), lambda h, p: ["10.0.0.5"], Recorder())
+    with pytest.raises(AddressRefused) as info:
+        backend.connect_tcp("zq!pay;rent=zq.shop.test", 80)
+    assert "zq" not in str(info.value) and "zq" not in info.value.host
 
 
 def test_N11_private_hosts_names_exact_hosts_only():
