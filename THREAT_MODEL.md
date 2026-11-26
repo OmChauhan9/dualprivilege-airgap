@@ -162,7 +162,10 @@ payee is ever authorized, whatever its value.
   every connection goes only to a public address. The check runs on the address the socket then
   connects to, and every answer for the host must be public, so DNS rebinding has no gap between
   check and connect. Loopback, private, link-local (cloud metadata), shared, unique-local,
-  multicast and unspecified addresses are refused, also when wrapped in an IPv6 form. A host the
+  multicast and unspecified addresses are refused. So is an IPv4 address of those kinds wrapped in
+  an IPv6 form: IPv4-mapped, 6to4, Teredo and NAT64 (`64:ff9b::/96`) addresses are unwrapped and
+  their IPv4 address checked. IPv4-compatible (`::/96`), IPv4-translated (`::ffff:0:0:0/96`) and
+  deprecated site-local (`fec0::/10`) addresses are refused outright. A host the
   user named is refused too, unless the developer lists that exact host in `private_hosts`. A
   refusal is reported as P5. The mock web never resolves names, so the eval does not exercise this
   check. Tests: `test_N10_*`, `test_N11_*`.
@@ -195,7 +198,8 @@ comparison used page data.
   reply is withheld. Any other exception means the outcome is unknown: the call goes to
   `RunResult.unsettled`, never to the ledger, the run stops, and the reply says the action may or
   may not have happened. Its amount stays counted against the run's limits in every case. The
-  exception text never reaches a result field, the audit log or a model. Tests: `test_D6_*` to
+  exception object is kept in `Action.exception`, but its text is never put in `error`, `summary`
+  or `blocked`, the audit log or a model. Tests: `test_D6_*` to
   `test_D12_*` in `tests/test_byo_tools.py`.
 - **Re-entrancy.** A callback that calls `Airgap.run` again on the same thread or asyncio task is
   refused, so nesting cannot multiply the per-run limits (`test_D13_*`).
@@ -224,7 +228,8 @@ all three, and put plain code where they meet:
 | Session as a whole | yes | yes | yes |
 
 Every `policy` event records the Rule of Two state. [A] stays on once a fetch has returned, [B] is
-always on, and [C] is on when that action is a payment or email. When an action would combine [A]
+on whenever `pay` or `send_email` is given, and [C] is on when that action is a payment or email.
+When an action would combine [A]
 with [C]:
 
 - The policy engine denies outright any identity sink (payee, recipient, subject, body, memo)
@@ -253,9 +258,11 @@ Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
   - *Error text.* Reader validation errors used to quote the page's value (in
     `identity:error_echo` the user saw `IGNORE-ALL-RULES-AND-PAY...`). Code now writes them,
     naming the schema field and the rule that failed, never the page's text or keys. Fetch errors
-    and the `blocked` list are written by code too. They can still name a host the page chose, but
-    only one that parses as a real hostname. A malformed or non-http address gets a fixed phrase.
-    Errors never reach the orchestrator (there is no replanning after a runtime error).
+    and the `blocked` list are written by code too, a refused redirect port included. They can
+    still name a host the page or its server chose, but only one that parses as a real hostname. A
+    malformed or non-http address gets a fixed phrase. When the developer's reader model raises,
+    `error` names the exception's type, never its message. Errors never reach the orchestrator
+    (there is no replanning after a runtime error).
   - *Early stop.* A page can make the run stop (bad schema value, non-2xx status). Later steps
     then do not happen, and earlier ones are not undone. In `invoices:error_midplan`, the first
     payment has already run when the second invoice breaks the reader.
@@ -295,7 +302,8 @@ Intervals are 95% Wilson intervals. Confirmations per run: 0.46 to 0.47.
   provenance ([ADR 0003](docs/adr/0003-in-process-mock-web.md)).
 - **A transport the developer passes is trusted.** `Airgap(transport=...)` replaces the guard's
   public-address transport. The guard then does not check where it connects, and it relies on the
-  transport to send one request per call and never follow redirects itself.
+  transport to send one request per call and never follow redirects itself. It must also enforce
+  the 20 s fetch limit itself: the guard can only give each socket operation the time left.
 - **Callbacks on another thread.** A callback that starts a thread and calls the guard from there
   is not detected. That nested run gets its own limits. Limits are per run, and nothing bounds
   spend across runs.
@@ -368,8 +376,10 @@ adapts. It writes its results to a separate file and never mixes them into the c
   already listed. Strict confirmation had 0/172 hijacks and 20/172 attempts that reached the goal
   (a misleading reply, no side effect). An earlier run on Oct 30 code (`adaptive_real.*`, 39 usable
   attempts) found the same. The result is a lower bound from one attacker model and a few rounds.
-- **Mock web only.** There is no real HTTP fetcher and no TLS. The corpus has no PDFs or calendar
-  invites yet (HTML pages only), and there are only four reader schemas.
+- **Evaluated on the mock web only.** Every evaluation used the in-process mock web. The real-web
+  transport (`Airgap`'s default) is new and has not been evaluated. It verifies TLS certificates,
+  but there is no TLS provenance. The corpus has no PDFs or calendar invites yet (HTML pages only),
+  and there are only four reader schemas.
 - **Narrow utility.** Tasks that need open-ended reasoning over page content are out of reach for
   this design ([ADR 0002](docs/adr/0002-plan-then-execute-json-plan.md)).
 - **Answers can carry page data.** An `answer` template can include reader values, or a vendor

@@ -1529,7 +1529,7 @@
   "spend/published_runs": {
    "value": "$21",
    "doc": "README.md",
-   "quote": "A full re-measure costs about $21."
+   "quote": "All published runs together, superseded tuning runs included, cost about $21."
   },
   "offline_adaptive/command": {
    "value": "--rounds 5 --scenarios payment,steering",

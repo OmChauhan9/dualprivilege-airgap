@@ -12,10 +12,12 @@ Reports are read and answered as time allows.
 ## Scope
 
 In scope: the router in `src/airgap/` (fetcher, sanitizer, reader, plan validation, interpreter,
-policy engine), the demo server in `src/airgap/server/`, and the console in `web/`. Examples that
-matter most: a path by which untrusted page text reaches the orchestrator or a payment, email or
-URL sink without passing the policy engine; a way to make a real model call skip the spend check;
-a path traversal or injection in the demo server or console. The check compares an estimate with
+policy engine), the public `Airgap` API and the guard's default real-web transport
+(`src/airgap/core/transport.py`), the demo server in `src/airgap/server/`, and the console in
+`web/`. Examples that matter most: a path by which untrusted page text reaches the orchestrator or
+a payment, email or URL sink without passing the policy engine; a way to make the default transport
+connect to a non-public address the developer did not list; a way to make a real model call skip
+the spend check; a path traversal or injection in the demo server or console. The check compares an estimate with
 the cap before each call. A provider that reports more usage than the estimate can push the total
 past the cap.
 
@@ -25,8 +27,9 @@ against the local demo.
 
 ## Ground rules for testing
 
-Use only the local mock world (fictional `.test` hosts). Do not point attacks at real sites, and
-do not run real model calls against anyone's credentials but your own.
+Use the local mock world (fictional `.test` hosts) where you can. To test the default transport,
+use servers you run yourself. Do not point attacks at other people's sites, and do not run real
+model calls against anyone's credentials but your own.
 
 ## Supported versions
 
