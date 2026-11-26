@@ -248,8 +248,8 @@ The console has a replay mode for reproducible recordings, described in [`web/RE
 ## Use it in your agent
 
 `Airgap` puts the guard in front of your own payment and mail functions. Your planner model sees
-only the user's request and your settings (payee names, the email allowlist, the limits), never a
-page. Pages are fetched by the guard, sanitized and read by a tool-less reader. P0 to P7 run in
+only the user's request and your settings (payee names, the email allowlist, the per-payment
+limit), never a page. Pages are fetched by the guard, sanitized and read by a tool-less reader. P0 to P7 run in
 plain code before your function is called. Install it as in the [Quick start](#quick-start).
 
 In this example `bank`, `mailer`, `my_model` and `message_id` are yours, and the rent URL is a
@@ -343,9 +343,12 @@ address, `payees` that is not a mapping, a recipient that is not an email addres
 where a list of domains, recipients or private hosts belongs, a domain or private host that is not
 a host name, and limits that are not finite and positive, or where `per_payment_usd` exceeds
 `per_run_usd`. A `domains` entry is lowercased, with one trailing dot removed, and must be a
-registrable domain: `api.example.com` is refused, and the error names `example.com` to pass
-instead. `send_email` receives the recipient exactly as you listed it in `email_recipients`. The
-match ignores ASCII letter case only, so a Unicode look-alike of an address is refused.
+registrable domain: `api.example.com` is refused, and the error names `example.com`. P5 compares
+the last two labels, so on shared hosting (`alice.github.io`) the registrable domain covers every
+tenant's site; pass it only if you trust them all. `send_email` receives the recipient exactly as you listed it in `email_recipients`. The
+match ignores ASCII letter case only, so a Unicode look-alike of an address is refused. `run` refuses
+a `run_id` that is not a non-empty string, and a planner whose `complete` returns anything but a
+`Completion` raises a TypeError that says so.
 
 **What you see on an unknown outcome.** `result.unsettled` holds the call with its exact
 arguments, its idempotency key (`a.call.key`) and the exception (`a.exception`). It is never in
@@ -376,7 +379,8 @@ at the limit, but your transport decides how long each step takes.
 thread, because the guard cannot see that and the nested run gets fresh limits.
 `run(on_event=...)` streams every audit event. The approved `policy` event comes just before your
 function runs, so a sink that persists events has a record if the process dies mid-payment.
-`Event.untrusted` names the fields that may hold page text. Never give those to a model with tools
+`Event.untrusted` names the fields that may hold page text, including a `policy` event's `reason`
+and `args`, which can name a host or amount a page chose. Never give those to a model with tools
 or render them as HTML. `result.summary` has code-written lines for logs. Like `error` and
 `blocked`, it can name a host a page or its server chose and an amount a page supplied, but no
 other page text.

@@ -862,7 +862,7 @@ function HeldoutTable({ data, order, heldoutRun }: { data: ResultsJson; order: s
   const any = data.conditions[order[0]!]!.heldout;
   const origin = heldoutRun
     ? `picked by a fixed hash of the case id before any real results existed and never used for tuning. ${CAP_CAVEAT}`
-    : `on the cases a fixed hash of the case id holds out. They are not unseen here: the Oct 30 held-out run (final_heldout) already used them. ${CAP_CAVEAT}`;
+    : `on the cases a fixed hash of the case id holds out. They are not unseen here: the published held-out run (final_heldout) used them first. ${CAP_CAVEAT}`;
   return (
     <div className="bg-ink-900">
       <div className="px-4 pt-3 pb-2">
