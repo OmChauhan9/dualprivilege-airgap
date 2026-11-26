@@ -15,7 +15,10 @@ UNTRUSTED_FIELDS: dict[str, frozenset[str]] = {
     "sanitize": frozenset({"removed"}),
     "reader_output": frozenset({"value"}),
     "tainted_control_flow": frozenset({"compared"}),
-    "policy": frozenset(),  # a tainted payee, recipient or URL is written as "<from a page>"
+    # A tainted payee, recipient or URL is written as "<from a page>", but a refused redirect or
+    # connection can name a well-formed host the page or its server chose, in `reason` or in
+    # `args.host`, and an amount in `args` can be one a page supplied.
+    "policy": frozenset({"reason", "args"}),
     "effect": frozenset(),
     "answer": frozenset({"text"}),  # always listed; `untrusted_derived` says if it really is
     "error": frozenset({"error"}),  # a reader or plan error may quote a value
