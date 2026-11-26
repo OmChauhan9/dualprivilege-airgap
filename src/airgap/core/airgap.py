@@ -21,7 +21,7 @@ import httpx
 
 from airgap.core.actions import Effects, Kind, PayFn, SendEmailFn
 from airgap.core.audit import AuditLog, AuditSinkFailed, Event
-from airgap.core.fetcher import Fetcher, is_hostname
+from airgap.core.fetcher import Fetcher, is_hostname, registrable_domain
 from airgap.core.interpreter import Interpreter
 from airgap.core.orchestrator import Orchestrator, PlanRejected
 from airgap.core.policy import (
@@ -68,24 +68,30 @@ class Airgap:
         domains: Iterable[str] = (),
         per_payment_usd: float = 100.0,
         per_run_usd: float = 200.0,
-        confirm: Confirm = deny_all,
+        confirm: Confirm | None = None,
         reader: ChatModel | None = None,
         transport: httpx.BaseTransport | None = None,
         private_hosts: Iterable[str] = (),
     ) -> None:
         """
-        planner           sees only the user's request and the allowlist names; writes the plan.
+        planner           sees only the user's request, the payee aliases, the email allowlist
+                          and the per-payment limit; writes the plan. Required: any object with
+                          ChatModel's `complete` method.
         pay, send_email   your functions, each taking one Payment or Email. Leave one out and the
                           guard never does that action (P0). Return normally: it happened.
                           Raise `Declined`: it certainly did not. Raise anything else: the
                           outcome is unknown, and the run stops there.
         payees            alias -> address the user saved (P1). An address the user types in the
                           request also counts.
-        email_recipients  the only addresses mail may go to (P3), compared case-insensitively.
-        domains           registrable domains fetchable beyond those named in the request (P5).
+        email_recipients  the only addresses mail may go to (P3), compared ignoring ASCII case
+                          only. `send_email` receives the address as you wrote it here.
+        domains           registrable domains fetchable beyond those named in the request (P5),
+                          compared ignoring case and one trailing dot. Each allows every host
+                          under it. An entry below its registrable domain ("api.example.com")
+                          is refused, and the error names the one to pass ("example.com").
         per_payment_usd   P2 limit for one payment. per_run_usd: P2 limit across one run.
         confirm           asked when the verdict is "confirm" (P4 page amount, P6 page choice).
-                          Approves only by returning exactly True. Default: refuse.
+                          Approves only by returning exactly True. Default (None): refuse.
         reader            the tool-less model that reads sanitized pages. Default: `planner`.
         transport         how pages are fetched. Default: the guard's own transport, built per
                           run, which connects only to public addresses, uses no proxy and no
@@ -102,14 +108,27 @@ class Airgap:
         private_hosts     exact host names the guard's own transport may reach at a non-public
                           address, such as an intranet page ("wiki.corp.internal"). A subdomain
                           of a listed host is not listed.
+
+        A wrong type raises TypeError and a wrong value ValueError, each naming the argument.
         """
+        confirm = deny_all if confirm is None else confirm
+        _check_model("planner", planner)
+        if reader is not None:
+            _check_model("reader", reader)
         _check_shape("pay", pay, "pay(p: Payment)")
         _check_shape("send_email", send_email, "send_email(e: Email)")
         _check_shape("confirm", confirm, "confirm(c: Confirmation)")
+        if payees is not None and not isinstance(payees, Mapping):
+            raise TypeError(
+                f"payees must be a mapping of alias -> address, not {type(payees).__name__}"
+            )
+        _check_not_one_string(
+            email_recipients=email_recipients, domains=domains, private_hosts=private_hosts
+        )
         problems = [
             f"{name} is an async function; pass a plain function"
             for name, fn in (("pay", pay), ("send_email", send_email), ("confirm", confirm))
-            if fn is not None and inspect.iscoroutinefunction(fn)
+            if fn is not None and _is_async(fn)
         ]
         if transport is not None and private_hosts:
             problems.append(
@@ -118,7 +137,9 @@ class Airgap:
             )
         payees = dict(payees or {})
         recipients = frozenset(email_recipients)
-        domains = frozenset(domains)
+        domains = frozenset(
+            h.lower().removesuffix(".") if isinstance(h, str) else h for h in domains
+        )
         private_hosts = frozenset(private_hosts)
         problems += _vet_grant(payees, recipients, domains, private_hosts)
         problems += _vet_limits(per_payment_usd, per_run_usd)
@@ -163,10 +184,17 @@ class Airgap:
         names the fields that may hold page text: never give those to a model with tools and never
         render them as HTML.
 
-        Returns for anything a page, a model, the policy or your functions do. Raises RuntimeError
-        when called from inside a run, BudgetExceeded for the model spend cap, and any
-        BaseException, which then carries the partial result as `exc.airgap_result`.
+        Returns a RunResult for anything a page, the reader model, the policy or your functions
+        do, and when the planner's plan is rejected (`error` "PlanRejected: ..."). Raises
+        RuntimeError when called from inside a run, and TypeError for a `run_id` that is not a
+        non-empty str or a planner whose `complete` returns something other than a
+        `Completion`. Raises whatever the planner model's `complete`
+        raises (a ConnectionError, say), BudgetExceeded for the model spend cap, and any other
+        BaseException (KeyboardInterrupt); each carries the partial result as
+        `exc.airgap_result`.
         """
+        if run_id is not None and not (isinstance(run_id, str) and run_id):
+            raise TypeError(f"run_id must be a non-empty str or None, not {run_id!r}")
         return _execute(self, request, run_id, on_event, _Ablation())
 
     def _context(self, request: str) -> UserContext:
@@ -187,10 +215,32 @@ class Airgap:
         )
 
 
+def _check_model(name: str, model: object) -> None:
+    if not callable(getattr(model, "complete", None)):
+        raise TypeError(
+            f"{name} must be a model with a complete(messages, *, role, schema=None) method, "
+            f"got {type(model).__name__}"
+        )
+
+
+def _check_not_one_string(**collections: object) -> None:
+    """One string where a collection belongs would be read one character at a time."""
+    for name, value in collections.items():
+        if isinstance(value, str | bytes):
+            raise TypeError(f"{name} is one string, not a collection: write {name}=[{value!r}]")
+
+
+def _is_async(fn: Callable[..., object]) -> bool:
+    """An async function, or an object whose __call__ is one."""
+    return inspect.iscoroutinefunction(fn) or inspect.iscoroutinefunction(type(fn).__call__)
+
+
 def _check_shape(name: str, fn: Callable[..., object] | None, shape: str) -> None:
     """A function the guard calls must be callable with one positional argument."""
     if fn is None:
         return
+    if not callable(fn):
+        raise TypeError(f"{name} must be a function: {shape}, got {type(fn).__name__}")
     try:
         sig = inspect.signature(fn)
     except (TypeError, ValueError):  # a builtin with no signature: trust it
@@ -228,6 +278,13 @@ def _vet_grant(
             for h in sorted(hosts, key=repr)
             if not (isinstance(h, str) and h and is_hostname(h))
         ]
+    problems += [
+        f"domains: {h!r} is not a registrable domain, and P5 compares registrable domains (the "
+        f"last two labels). Passing {registrable_domain(h)!r} would allow every host under "
+        f"{registrable_domain(h)!r}, which on shared hosting means every tenant's site"
+        for h in sorted(domains, key=repr)
+        if isinstance(h, str) and h and is_hostname(h) and registrable_domain(h) != h
+    ]
     return problems
 
 
@@ -274,6 +331,7 @@ def _execute(
     start = time.perf_counter()
     blocked: list[str] = []
     final, error = "", None
+    plan_steps: int | None = None
 
     def result() -> RunResult:
         return RunResult(
@@ -286,10 +344,12 @@ def _execute(
             completion_tokens=orchestrator.completion_tokens + reader.completion_tokens,
             latency_s=time.perf_counter() - start,
             error=error,
+            plan_steps=plan_steps,
         )
 
     try:
         plan = orchestrator.plan(request, ctx)
+        plan_steps = len(plan.steps)
         audit.emit("plan", steps=[s.model_dump() for s in plan.steps])
         interp = Interpreter(
             ctx,

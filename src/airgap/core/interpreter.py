@@ -25,7 +25,7 @@ from airgap.core.plan import (
     Read,
     SendEmail,
 )
-from airgap.core.policy import Decision, Policy, UserContext
+from airgap.core.policy import ConfirmFailed, Decision, Policy, UserContext
 from airgap.core.reader import Reader
 from airgap.core.sanitizer import SanitizeResult, sanitize
 from airgap.core.values import Tainted, merge_sources, trusted
@@ -117,6 +117,12 @@ class Interpreter:
         if label in self.ctx.payee_allowlist:
             return Tainted(self.ctx.payee_allowlist[label], payee.sources, payee.steered_by)
         return payee
+
+    def _recipient(self, to: Tainted) -> Tainted:
+        """An allowlisted recipient in the allowlist's own spelling, keeping its labels, so
+        `send_email` receives the address P3 matched and never another spelling of it."""
+        listed = self.ctx.listed_recipient(str(to.value))
+        return to if listed is None else Tainted(listed, to.sources, to.steered_by)
 
     # ---- execution ----------------------------------------------------------------------
 
@@ -254,26 +260,46 @@ class Interpreter:
         call = None
         if decision.verdict != "deny":
             call = self.effects.keyed(Payment(str(payee.value), float(amount.value), step.memo))
-        if self.policy.authorize("pay", args, decision, call):
+        refused = f"pay {amount.value} to {_shown(payee)}"
+        if self._approved("pay", args, decision, call, refused, result):
             assert call is not None
             self._settle(self.effects.call(call, confirmed=decision.verdict == "confirm"), result)
-        else:
-            result.blocked.append(f"pay {amount.value} to {_shown(payee)}: {decision.reason}")
-            result.denied.append(f"pay denied by {','.join(decision.rules) or 'policy'}")
 
     def _email(self, step: SendEmail, result: ExecResult) -> None:
-        to = self.resolve(step.to)
+        to = self._recipient(self.resolve(step.to))
         decision = self.policy.check_email(to, trusted(step.subject), trusted(step.body))
         args = {"to": _shown(to), "subject": step.subject}
         call = None
         if decision.verdict != "deny":
             call = self.effects.keyed(Email(str(to.value), step.subject, step.body))
-        if self.policy.authorize("send_email", args, decision, call):
+        if self._approved("send_email", args, decision, call, f"email to {_shown(to)}", result):
             assert call is not None
             self._settle(self.effects.call(call, confirmed=decision.verdict == "confirm"), result)
-        else:
-            result.blocked.append(f"email to {_shown(to)}: {decision.reason}")
-            result.denied.append(f"email denied by {','.join(decision.rules) or 'policy'}")
+
+    def _approved(
+        self,
+        kind: str,
+        args: dict[str, Any],
+        decision: Decision,
+        call: Payment | Email | None,
+        refused: str,
+        result: ExecResult,
+    ) -> bool:
+        """The policy's answer. A refusal, including one where the confirm callback raised, is
+        listed in `blocked` with code-written text that never repeats what confirm returned."""
+        why = decision.reason
+        try:
+            if self.policy.authorize(kind, args, decision, call):
+                return True
+        except ConfirmFailed:
+            result.blocked.append(f"{refused}: {why}; confirmation was not given (confirm raised)")
+            raise
+        if decision.verdict == "confirm":
+            why += "; confirmation was not given (only True from confirm approves)"
+        result.blocked.append(f"{refused}: {why}")
+        noun = "pay" if kind == "pay" else "email"
+        result.denied.append(f"{noun} denied by {','.join(decision.rules) or 'policy'}")
+        return False
 
     @staticmethod
     def _settle(action: Action, result: ExecResult) -> None:

@@ -250,9 +250,7 @@ def validate_plan(plan: Plan, ctx: UserContext) -> list[str]:
                     problems.append(f"{where}: payee {addr} is not allowlisted or user-supplied")
         elif isinstance(step, SendEmail):
             check_arg(step.to, where)
-            if isinstance(step.to, Lit) and str(step.to.lit).lower() not in {
-                e.lower() for e in ctx.email_allowlist
-            }:
+            if isinstance(step.to, Lit) and ctx.listed_recipient(str(step.to.lit)) is None:
                 problems.append(f"{where}: recipient {step.to.lit} is not allowlisted")
         elif isinstance(step, Answer):
             bad_args: set[str] = set()  # already reported; a spec check would only repeat it

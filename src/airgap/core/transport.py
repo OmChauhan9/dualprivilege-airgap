@@ -9,7 +9,7 @@ The fetch deadline holds here too: the lookup, each connect attempt, the TLS han
 read and write get at most what is left of the fetch in progress, so headers sent one byte at a
 time or many unreachable DNS answers cannot extend it.
 
-Built on the public APIs of httpcore, which httpx requires and pins; no package is added.
+Built on the public APIs of httpcore, declared in pyproject at the same major version httpx pins.
 """
 
 from __future__ import annotations

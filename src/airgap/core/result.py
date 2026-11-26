@@ -21,7 +21,9 @@ class RunResult:
       error       why the run stopped early, code-written
       final_text  the reply; withheld and replaced by a code-written notice when anything was
                   denied, declined, unknown or errored
-      summary     one code-written line per action, refusal and stop, for logs and UIs
+      plan_steps  how many steps the validated plan had; None when no plan was made
+      summary     one code-written line per action, refusal and stop, for logs and UIs, and
+                  "the planner made no plan steps" when the plan was empty
     """
 
     final_text: str
@@ -33,6 +35,7 @@ class RunResult:
     completion_tokens: int = 0
     latency_s: float = 0.0
     error: str | None = None
+    plan_steps: int | None = None
 
     @property
     def ledger(self) -> Ledger:
@@ -50,5 +53,6 @@ class RunResult:
         return (
             *(a.summary for a in self.actions),
             *self.blocked,
+            *(["the planner made no plan steps"] if self.plan_steps == 0 else []),
             *([self.error] if self.error else []),
         )
