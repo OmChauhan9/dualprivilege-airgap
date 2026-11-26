@@ -73,6 +73,15 @@ The git history is the record (`git log`). Merged pull requests:
 | [#71](https://github.com/OmChauhan9/dualprivilege-airgap/pull/71) | fix(server): stop calling the model once the console tab is closed |
 | [#72](https://github.com/OmChauhan9/dualprivilege-airgap/pull/72) | fix(interpreter): warn the user when a page's price picked the vendor named in the reply |
 | [#73](https://github.com/OmChauhan9/dualprivilege-airgap/pull/73) | fix(fetch): stop pages writing their own text into the error and blocked list the user sees |
+| [#74](https://github.com/OmChauhan9/dualprivilege-airgap/pull/74) | docs: stop the docs and console claiming more than the code does |
+| [#75](https://github.com/OmChauhan9/dualprivilege-airgap/pull/75) | docs(readme): lead with what the router stops and does not stop, then the evidence |
+| [#76](https://github.com/OmChauhan9/dualprivilege-airgap/pull/76) | fix(policy): stop a wallet inside a pasted link from counting as one the user typed, for every link spelling |
+| [#77](https://github.com/OmChauhan9/dualprivilege-airgap/pull/77) | fix(sanitizer): catch text hidden with newer css units, font weights and color functions |
+| [#78](https://github.com/OmChauhan9/dualprivilege-airgap/pull/78) | fix(fetch): stop decoding charset labels browsers ignore, so the reader sees what the user sees |
+| [#79](https://github.com/OmChauhan9/dualprivilege-airgap/pull/79) | docs: stop listing the P1, charset and sanitizer gaps that #76-#78 closed, and fix docstrings that overstate |
+| [#80](https://github.com/OmChauhan9/dualprivilege-airgap/pull/80) | feat(reproduce): one offline command re-checks the offline runs, the real-model data and the numbers quoted in README, THREAT_MODEL.md and docs/ |
+| [#81](https://github.com/OmChauhan9/dualprivilege-airgap/pull/81) | fix(adaptive): tell the attacker model how the defense scores, decodes and sanitizes today |
+| [#82](https://github.com/OmChauhan9/dualprivilege-airgap/pull/82) | feat: put the guard in front of your own pay, send_email and the real web |
 
 The core pipeline (mock world, unguarded baseline, airgap, policy engine) and the first evaluation
 harness were the first two commits on `main`, before the PR workflow started.
