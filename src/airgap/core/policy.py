@@ -36,15 +36,25 @@ from airgap.core.values import Tainted
 Verdict = Literal["allow", "deny", "confirm"]
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+_NAT64 = ipaddress.IPv6Network("64:ff9b::/96")
+# IPv4-compatible (::a.b.c.d), IPv4-translated (::ffff:0:a.b.c.d) and deprecated site-local
+# addresses: no public host uses them, and Python calls some of them global.
+_NEVER_PUBLIC = tuple(ipaddress.IPv6Network(n) for n in ("::/96", "::ffff:0:0:0/96", "fec0::/10"))
 
 
 def is_public_address(addr: IPAddress) -> bool:
     """P5, connection rule: a socket may only go to a globally routable unicast address.
 
     Refuses loopback, private, link-local (cloud metadata), shared (CGNAT), unique-local,
-    multicast, unspecified and reserved ranges, also when wrapped in an IPv6 form.
+    site-local, multicast, unspecified and reserved ranges. An IPv4 address inside an IPv6 form
+    (IPv4-mapped, NAT64 64:ff9b::/96, 6to4, Teredo) is judged as that IPv4 address;
+    IPv4-compatible and IPv4-translated forms are refused outright.
     """
     if isinstance(addr, ipaddress.IPv6Address):
+        if any(addr in net for net in _NEVER_PUBLIC):
+            return False
+        if addr in _NAT64:
+            return is_public_address(ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF))
         embedded = addr.ipv4_mapped or addr.sixtofour or (addr.teredo[1] if addr.teredo else None)
         if embedded is not None:
             return is_public_address(embedded)
