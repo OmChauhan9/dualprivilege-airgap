@@ -347,8 +347,10 @@ registrable domain: `api.example.com` is refused, and the error names `example.c
 the last two labels, so on shared hosting (`alice.github.io`) the registrable domain covers every
 tenant's site; pass it only if you trust them all. `send_email` receives the recipient exactly as you listed it in `email_recipients`. The
 match ignores ASCII letter case only, so a Unicode look-alike of an address is refused. `run` refuses
-a `run_id` that is not a non-empty string, and a planner whose `complete` returns anything but a
-`Completion` raises a TypeError that says so.
+a `run_id` other than None or a non-empty string, and a planner whose `complete` returns
+anything but a `Completion` raises a TypeError that says so. An exception from the planner model
+is raised from `run`, with the partial result as `exc.airgap_result`; one from the reader model
+is returned in `result.error`.
 
 **What you see on an unknown outcome.** `result.unsettled` holds the call with its exact
 arguments, its idempotency key (`a.call.key`) and the exception (`a.exception`). It is never in
