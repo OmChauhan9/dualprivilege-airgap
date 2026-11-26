@@ -179,7 +179,8 @@ class Interpreter:
 
         def check_hop(prev_url: str, next_url: str) -> None:
             hop = self.policy.check_fetch(trusted(next_url), came_from=prev_url)
-            if not self.policy.authorize("fetch_redirect", {"url": next_url}, hop):
+            # The target came from the server's Location header, so it is never logged here.
+            if not self.policy.authorize("fetch_redirect", {"url": FROM_A_PAGE}, hop):
                 result.blocked.append(f"redirect: {hop.reason}")
                 raise FetchError(hop.reason)
 

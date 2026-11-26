@@ -7,13 +7,14 @@ outcome, so no caller has to decide what an exception from a payment function me
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import inspect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from airgap.core.audit import AuditLog
+from airgap.core.audit import AuditLog, AuditSinkFailed
 
 
 @dataclass(frozen=True)
@@ -172,7 +173,8 @@ class Effects:
         """Call the matching function exactly once, record the Action, and return it.
 
         Never retries: a retry after an unknown outcome could pay twice. A BaseException
-        (KeyboardInterrupt) is recorded as unknown first and then re-raised.
+        (KeyboardInterrupt) is recorded as unknown first and then re-raised, even when on_event
+        fails while it is recorded.
         """
         self._attempts[_identity(call)] = self._attempts.get(_identity(call), 0) + 1
         try:
@@ -187,7 +189,8 @@ class Effects:
         except Exception as exc:  # noqa: BLE001 - any other failure leaves the outcome unknown
             action = Action(call, "unknown", confirmed, exception=exc)
         except BaseException as exc:
-            self._record(Action(call, "unknown", confirmed, exception=exc))
+            with contextlib.suppress(AuditSinkFailed):  # never in place of the BaseException
+                self._record(Action(call, "unknown", confirmed, exception=exc))
             raise
         else:
             if inspect.isawaitable(ret):

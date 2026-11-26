@@ -8,6 +8,7 @@ import re
 import time
 import zlib
 from collections.abc import Callable, Iterator
+from contextvars import ContextVar
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
@@ -17,10 +18,13 @@ from airgap.core.values import Handle
 
 MAX_BYTES = 1_000_000
 MAX_REDIRECTS = 5
-# Wall clock for one fetch: every hop, its connect, headers and body. Each request's timeouts are
-# what is left of it, so no transport setting can extend it. Read at call time, so a test can
-# lower it.
+# Wall clock for one fetch: every hop, its name lookup, connects, headers and body. The guard's
+# own transport cuts every lookup, connect, read and write to what is left of it (CURRENT_DEADLINE).
+# A transport you pass gets each request's timeouts set to what is left, which bounds each socket
+# operation but not their sum. Read at call time, so a test can lower it.
 FETCH_DEADLINE_S = 20.0
+# The time.monotonic() deadline of the fetch in progress; None outside a fetch.
+CURRENT_DEADLINE: ContextVar[float | None] = ContextVar("airgap_fetch_deadline", default=None)
 # Every header a site receives. Built by the guard; nothing comes from the caller's code.
 REQUEST_HEADERS = (
     ("user-agent", "airgap/0.1"),
@@ -39,11 +43,12 @@ class FetchError(RuntimeError):
 
 class AddressRefused(FetchError):
     """A host resolved to a non-public address; raised by the guard's transport at connect time.
-    `host` passed P5, so naming it quotes no page text."""
+    A redirect hop's host can be one the page chose, so `host` names it only when it is a
+    well-formed host name."""
 
     def __init__(self, host: str) -> None:
-        super().__init__(f"{host} resolves to a non-public address")
-        self.host = host
+        self.host = host if is_hostname(host) else "a host that is not a valid name"
+        super().__init__(f"{self.host} resolves to a non-public address")
 
 
 # Called with (the URL that redirected, the redirect target) before the target is requested;
@@ -414,7 +419,6 @@ class Fetcher:
     def _send(self, url: str, deadline: float) -> httpx.Response:
         """One request. Every failure becomes a code-written FetchError; the original exception,
         whose text may quote a Location header or the body, stays chained for a debugger."""
-        _unambiguous(url)
         left = deadline - time.monotonic()
         if left <= 0:
             raise FetchError(_TOO_SLOW)
@@ -440,7 +444,15 @@ class Fetcher:
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise FetchError(f"unsupported url: {url}")
+        _unambiguous(url)
         deadline = time.monotonic() + FETCH_DEADLINE_S
+        token = CURRENT_DEADLINE.set(deadline)
+        try:
+            return self._follow(url, check_hop, deadline)
+        finally:
+            CURRENT_DEADLINE.reset(token)
+
+    def _follow(self, url: str, check_hop: HopCheck | None, deadline: float) -> FetchedDoc:
         visited: list[httpx.Response] = []
         current = url
         for _ in range(MAX_REDIRECTS + 1):
@@ -457,6 +469,7 @@ class Fetcher:
                 raise FetchError("the server sent a malformed response") from exc
             if scheme not in ("http", "https"):
                 raise FetchError("redirect to a url that is not http or https")
+            _unambiguous(current)  # before P5 reads the host, so P5 never quotes a malformed one
             if check_hop is not None:
                 check_hop(prev, current)
         else:

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 from airgap.core.schemas import SCHEMAS, json_schema_for
 from airgap.core.values import Tainted, untrusted
 from airgap.models.base import ChatModel
+from airgap.models.budget import BudgetExceeded
 from airgap.models.jsonutil import extract_json_object
 
 # Sanitized page text longer than this is refused, not truncated: a hostile page must not be able
@@ -28,6 +29,11 @@ class ReaderNoOutput(ReaderError):
     reply, not the validator rejecting a value, so it must never count as a safe stop."""
 
 
+class ReaderModelFailed(RuntimeError):
+    """The reader model raised. Its message may quote the page it was reading, so only the
+    exception's type is named; the exception itself is chained. An outage, never a refusal."""
+
+
 class Reader:
     def __init__(self, model: ChatModel) -> None:
         self.model = model
@@ -47,7 +53,12 @@ class Reader:
             {"role": "system", "content": READER_SYSTEM},
             {"role": "user", "content": f"Schema: {schema_name}\n\nDocument:\n{text}"},
         ]
-        comp = self.model.complete(messages, role="reader", schema=json_schema_for(schema_name))
+        try:
+            comp = self.model.complete(messages, role="reader", schema=json_schema_for(schema_name))
+        except BudgetExceeded:
+            raise
+        except Exception as exc:  # noqa: BLE001 - any model failure fails the run closed
+            raise ReaderModelFailed(f"the reader model raised {type(exc).__name__}") from exc
         self.prompt_tokens += comp.prompt_tokens
         self.completion_tokens += comp.completion_tokens
         data = comp.parsed if comp.parsed is not None else extract_json_object(comp.text)
